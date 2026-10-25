@@ -1,0 +1,10 @@
+/devpost/learner-profile.md
+.env
+.env.*
+!.env.example
+.venv/
+workdir/
+logs/
+__pycache__/
+*.mp4
+*.mov
