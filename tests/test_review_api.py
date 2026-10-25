@@ -14,8 +14,8 @@ from app.rendering import clue_display_start
 class TranscriptReviewApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.previous_session = main.active_session
-        self.previous_job = main.transcription_job
-        main.transcription_job = None
+        self.previous_job = main.processing_job
+        main.processing_job = None
         main.active_session = main.ActiveSession(
             video_path=Path("sample.mp4"),
             media=MediaInfo(58.0, 1080, 1936),
@@ -44,7 +44,7 @@ class TranscriptReviewApiTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         main.active_session = self.previous_session
-        main.transcription_job = self.previous_job
+        main.processing_job = self.previous_job
 
     def test_manual_transcript_selection_sets_match_and_nudged_time(self) -> None:
         response = main.save_review(

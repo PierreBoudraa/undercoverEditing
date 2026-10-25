@@ -4,8 +4,10 @@ import math
 import os
 import subprocess
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Literal, Sequence
 
 import imageio_ffmpeg
@@ -396,6 +398,8 @@ def render_annotated_video(
     words: Sequence[WordOverlay],
     transcript_lines: Sequence[TranscriptLine],
     ffmpeg_path: Path | None = None,
+    progress_callback: Callable[[int], None] | None = None,
+    timing_callback: Callable[[str, float], None] | None = None,
 ) -> Path:
     input_path = input_path.expanduser().resolve()
     output_path = output_path.expanduser().resolve()
@@ -410,16 +414,22 @@ def render_annotated_video(
     duration = input_metadata.duration
     ass_path = output_path.with_suffix(".ass")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    ass_path.write_text(
-        build_ass_content(width, height, duration, words, transcript_lines),
-        encoding="utf-8",
-    )
-
     temporary_path = output_path.with_name(
         f"{output_path.stem}.partial{output_path.suffix}"
     )
     completed = False
+    ffmpeg_started: float | None = None
     try:
+        ass_started = perf_counter()
+        try:
+            ass_content = build_ass_content(
+                width, height, duration, words, transcript_lines
+            )
+            ass_path.write_text(ass_content, encoding="utf-8")
+        finally:
+            if timing_callback is not None:
+                timing_callback("ASS generation", perf_counter() - ass_started)
+
         filter_value = f"subtitles=filename='{_escape_filter_path(ass_path)}'"
         command = [
             str(ffmpeg_path),
@@ -447,45 +457,85 @@ def render_annotated_video(
             "copy",
             "-movflags",
             "+faststart",
+            "-progress",
+            "pipe:1",
+            "-nostats",
             str(temporary_path),
         ]
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        if result.returncode != 0:
-            raise subprocess.CalledProcessError(
-                result.returncode,
+        ffmpeg_started = perf_counter()
+        try:
+            process = subprocess.Popen(
                 command,
-                output=result.stdout,
-                stderr=result.stderr,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
-        if not temporary_path.is_file() or temporary_path.stat().st_size == 0:
-            raise OSError("FFmpeg did not create a non-empty output MP4.")
+            output_lines: list[str] = []
+            last_progress = -1
+            try:
+                if process.stdout is None:
+                    raise RuntimeError("FFmpeg progress output could not be read.")
+                for line in process.stdout:
+                    key, separator, value = line.strip().partition("=")
+                    if separator and key in ("out_time_us", "out_time_ms"):
+                        try:
+                            output_seconds = float(value) / 1_000_000
+                        except ValueError:
+                            continue
+                        progress = min(99, max(0, round(output_seconds / duration * 100)))
+                        if progress_callback is not None and progress != last_progress:
+                            progress_callback(progress)
+                        last_progress = progress
+                    elif key == "progress" and value == "end":
+                        if progress_callback is not None:
+                            progress_callback(100)
+                        last_progress = 100
+                    elif line.strip():
+                        output_lines.append(line.strip())
+                        if len(output_lines) > 30:
+                            output_lines.pop(0)
+                return_code = process.wait()
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
 
-        output_metadata = _read_video_metadata(temporary_path, ffmpeg_path)
-        if (output_metadata.width, output_metadata.height) != (
-            input_metadata.width,
-            input_metadata.height,
-        ):
-            raise RuntimeError(
-                f"Output dimensions {(output_metadata.width, output_metadata.height)} "
-                f"do not match the source dimensions "
-                f"{(input_metadata.width, input_metadata.height)}."
-            )
-        if abs(output_metadata.duration - input_metadata.duration) > 0.5:
-            raise RuntimeError(
-                f"Output duration {output_metadata.duration:.2f}s does not match "
-                f"the source duration {input_metadata.duration:.2f}s."
-            )
-        temporary_path.replace(output_path)
-        completed = True
+            if return_code != 0:
+                raise subprocess.CalledProcessError(
+                    return_code,
+                    command,
+                    output="\n".join(output_lines),
+                )
+            if not temporary_path.is_file() or temporary_path.stat().st_size == 0:
+                raise OSError("FFmpeg did not create a non-empty output MP4.")
+
+            output_metadata = _read_video_metadata(temporary_path, ffmpeg_path)
+            if (output_metadata.width, output_metadata.height) != (
+                input_metadata.width,
+                input_metadata.height,
+            ):
+                raise RuntimeError(
+                    f"Output dimensions {(output_metadata.width, output_metadata.height)} "
+                    f"do not match the source dimensions "
+                    f"{(input_metadata.width, input_metadata.height)}."
+                )
+            if abs(output_metadata.duration - input_metadata.duration) > 0.5:
+                raise RuntimeError(
+                    f"Output duration {output_metadata.duration:.2f}s does not match "
+                    f"the source duration {input_metadata.duration:.2f}s."
+                )
+            temporary_path.replace(output_path)
+            completed = True
+        finally:
+            if timing_callback is not None:
+                timing_callback("FFmpeg rendering", perf_counter() - ffmpeg_started)
     finally:
         if not completed and temporary_path.exists():
             temporary_path.unlink()
+        ass_path.unlink(missing_ok=True)
 
+    if progress_callback is not None and last_progress != 100:
+        progress_callback(100)
     return output_path

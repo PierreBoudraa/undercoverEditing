@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from app.config import (
     CAPTION_BASELINE_PERCENT,
@@ -15,6 +18,8 @@ from app.rendering import (
     build_ass_content,
     build_clue_events,
     clue_display_start,
+    render_annotated_video,
+    VideoMetadata,
 )
 
 
@@ -197,6 +202,70 @@ class RenderingTests(unittest.TestCase):
                 1936,
                 duration=10.0,
             )
+
+    def test_renderer_reports_ffmpeg_progress_and_stage_timings(self) -> None:
+        class FakeProcess:
+            stdout = iter(
+                (
+                    "out_time_us=10000000\n",
+                    "progress=continue\n",
+                    "out_time_us=58000000\n",
+                    "progress=end\n",
+                )
+            )
+
+            def wait(self) -> int:
+                return 0
+
+            def poll(self) -> int:
+                return 0
+
+            def kill(self) -> None:
+                raise AssertionError("A completed FFmpeg process must not be killed.")
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.mp4"
+            output_path = root / "final.mp4"
+            ffmpeg_path = root / "ffmpeg.exe"
+            input_path.write_bytes(b"input")
+            video_metadata = VideoMetadata(1080, 1936, 58.0)
+            progress: list[int] = []
+            timings: list[tuple[str, float]] = []
+
+            def start_fake_ffmpeg(command, **_options):
+                Path(command[-1]).write_bytes(b"rendered")
+                return FakeProcess()
+
+            with (
+                patch(
+                    "app.rendering._read_video_metadata",
+                    return_value=video_metadata,
+                ),
+                patch("app.rendering.build_ass_content", return_value="[Script Info]\n"),
+                patch(
+                    "app.rendering.subprocess.Popen",
+                    side_effect=start_fake_ffmpeg,
+                ),
+            ):
+                render_annotated_video(
+                    input_path,
+                    output_path,
+                    WORDS,
+                    (TranscriptLine(1.0, 1.3, "fou", "left"),),
+                    ffmpeg_path,
+                    progress.append,
+                    lambda stage, elapsed: timings.append((stage, elapsed)),
+                )
+
+            self.assertEqual(progress, [17, 99, 100])
+            self.assertEqual(
+                [stage for stage, _ in timings],
+                ["ASS generation", "FFmpeg rendering"],
+            )
+            self.assertTrue(all(elapsed >= 0 for _, elapsed in timings))
+            self.assertTrue(output_path.is_file())
+            self.assertFalse(output_path.with_suffix(".ass").exists())
 
 
 if __name__ == "__main__":

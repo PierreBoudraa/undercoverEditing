@@ -1067,9 +1067,35 @@ textarea {
 
 .review-actions {
   justify-content: space-between;
+  flex-wrap: wrap;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+#render-progress .progress-track span {
+  width: 0;
+  animation: none;
+  transition: width 180ms ease-out;
+}
+
+#download-output {
+  text-decoration: none;
+}
+
+.render-result {
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(15, 15, 20, 0.44);
+}
+
+.render-result .preview-video {
+  max-height: 650px;
+}
+
+.render-footer {
+  margin-top: 16px;
 }
 
 @keyframes spin {

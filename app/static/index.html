@@ -41,7 +41,7 @@
           <button id="transcript-step" class="step-item unavailable" type="button" data-go-step="transcript" disabled>
             <span class="step-number">03</span><span>Transcript</span>
           </button>
-          <button class="step-item unavailable" type="button" disabled>
+          <button id="render-step" class="step-item unavailable" type="button" data-go-step="render" disabled>
             <span class="step-number">04</span><span>Render</span>
           </button>
         </nav>
@@ -234,9 +234,46 @@
                 <div class="review-actions">
                   <button id="accept-all" class="button button-secondary" type="button">Accept all found</button>
                   <button id="start-over" class="text-button" type="button">Back to Words</button>
+                  <button id="render-button" class="button button-primary" type="button" disabled>Render video <span aria-hidden="true">→</span></button>
                 </div>
               </section>
             </div>
+          </div>
+        </section>
+
+        <section id="render-panel" class="workspace-panel" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">STEP 04 <span class="eyebrow-separator">/</span> MAKE THE CLIP</p>
+              <h2>Render your video</h2>
+              <p class="section-copy">Your player words and matched clues are burned into a new MP4.</p>
+            </div>
+            <span class="section-index">04</span>
+          </div>
+
+          <div id="render-progress" class="progress-card" role="status" hidden>
+            <div class="progress-heading">
+              <span class="progress-spinner" aria-hidden="true"></span>
+              <div>
+                <h3 id="render-progress-title">Rendering your video</h3>
+                <p id="render-progress-message" class="section-copy">Preparing the video overlays.</p>
+              </div>
+            </div>
+            <div class="progress-track"><span id="render-progress-bar"></span></div>
+          </div>
+
+          <div id="render-content" class="render-result" hidden>
+            <div class="preview-heading">
+              <div>
+                <p class="eyebrow">RENDER COMPLETE</p>
+                <h3>Your video is ready</h3>
+              </div>
+              <a id="download-output" class="button button-primary" href="/api/output" download="undercover-video.mp4">Download MP4 <span aria-hidden="true">↓</span></a>
+            </div>
+            <video id="final-video" class="preview-video" controls playsinline preload="metadata"></video>
+          </div>
+          <div class="render-footer">
+            <button id="back-to-transcript" class="text-button" type="button">← Back to Transcript</button>
           </div>
         </section>
 

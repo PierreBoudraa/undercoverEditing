@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import tempfile
@@ -7,7 +8,8 @@ import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal
+from time import perf_counter
+from typing import Literal, TypedDict
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -30,7 +32,12 @@ from app.media import (
     inspect_mp4,
     validate_video_duration,
 )
-from app.rendering import clue_display_start
+from app.rendering import (
+    TranscriptLine,
+    WordOverlay,
+    clue_display_start,
+    render_annotated_video,
+)
 from app.transcription import NoSpeechDetectedError, transcribe_words
 
 
@@ -42,15 +49,33 @@ PLAYERS: tuple[Speaker, ...] = ("left", "center", "right")
 LOGGER = logging.getLogger(__name__)
 
 
+class MarkerCoordinates(TypedDict):
+    x: float
+    y: float
+
+
+class SetupClue(TypedDict):
+    word: str
+    player: Speaker
+
+
+class SetupState(TypedDict):
+    player_words: dict[Speaker, str]
+    marker_positions: dict[Speaker, MarkerCoordinates]
+    clue_text: str
+    clues: list[SetupClue]
+
+
 @dataclass
 class ActiveSession:
     video_path: Path
     media: MediaInfo
-    setup: dict[str, object] | None = None
+    setup: SetupState | None = None
     transcript_words: list[TranscriptWord] = field(default_factory=list)
     clue_entries: list[ClueReviewEntry] = field(default_factory=list)
     transcription_info: dict[str, object] | None = None
     transcript_text: str = ""
+    render_signature: str | None = None
 
 
 @dataclass
@@ -73,8 +98,9 @@ class ClueReviewEntry:
 
 
 @dataclass
-class TranscriptionJob:
+class ProcessingJob:
     id: str
+    kind: Literal["transcription", "render"]
     state: Literal["queued", "running", "completed", "failed"]
     message: str
     progress: int | None = None
@@ -107,6 +133,27 @@ def _entry_response(entry: ClueReviewEntry) -> dict[str, object]:
     return asdict(entry)
 
 
+def _render_signature(session: ActiveSession) -> str:
+    return json.dumps(
+        {
+            "setup": session.setup,
+            "clues": [
+                {
+                    "clue_word": entry.clue_word,
+                    "speaker": entry.speaker,
+                    "start": entry.start,
+                    "end": entry.end,
+                    "time_nudge_seconds": entry.time_nudge_seconds,
+                    "confidence": entry.confidence,
+                }
+                for entry in session.clue_entries
+            ],
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+
 def _session_response(session: ActiveSession) -> dict[str, object]:
     return {
         "video": _video_response(session.media),
@@ -115,13 +162,29 @@ def _session_response(session: ActiveSession) -> dict[str, object]:
         "transcript_text": session.transcript_text,
         "clue_entries": [_entry_response(entry) for entry in session.clue_entries],
         "transcription_info": session.transcription_info,
-        "transcription_job": (
-            _job_response(transcription_job) if transcription_job is not None else None
+        "processing_job": (
+            _job_response(processing_job) if processing_job is not None else None
+        ),
+        "output_ready": (
+            _output_is_ready(session)
         ),
     }
 
 
-def _job_response(job: TranscriptionJob) -> dict[str, object]:
+def _output_is_ready(session: ActiveSession) -> bool:
+    return (
+        FINAL_VIDEO_PATH.is_file()
+        and session.transcription_info is not None
+        and session.render_signature == _render_signature(session)
+        and all(entry.confidence != "not_found" for entry in session.clue_entries)
+        and any(
+            entry.start is not None and entry.end is not None
+            for entry in session.clue_entries
+        )
+    )
+
+
+def _job_response(job: ProcessingJob) -> dict[str, object]:
     return asdict(job)
 
 
@@ -154,7 +217,7 @@ class ReviewRequest(BaseModel):
 app = FastAPI(title="Undercover Video Maker")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 active_session: ActiveSession | None = None
-transcription_job: TranscriptionJob | None = None
+processing_job: ProcessingJob | None = None
 job_lock = threading.Lock()
 
 
@@ -168,10 +231,8 @@ def _video_response(media: MediaInfo) -> dict[str, object]:
 
 
 def _job_is_running() -> bool:
-    return transcription_job is not None and transcription_job.state in (
-        "queued",
-        "running",
-    )
+    with job_lock:
+        return processing_job is not None and processing_job.state in ("queued", "running")
 
 
 def _update_job(
@@ -183,14 +244,18 @@ def _update_job(
     error: str | None = None,
 ) -> None:
     with job_lock:
-        if transcription_job is None or transcription_job.id != job_id:
+        if processing_job is None or processing_job.id != job_id:
             return
         if state is not None:
-            transcription_job.state = state
+            processing_job.state = state
         if message is not None:
-            transcription_job.message = message
-        transcription_job.progress = progress
-        transcription_job.error = error
+            processing_job.message = message
+        processing_job.progress = progress
+        processing_job.error = error
+
+
+def _print_stage_timing(stage: str, elapsed_seconds: float) -> None:
+    print(f"{stage}: {elapsed_seconds:.2f} seconds")
 
 
 def _run_transcription(
@@ -211,8 +276,12 @@ def _run_transcription(
             video_path,
             [clue.clue_word for clue in clues],
             update_progress,
+            _print_stage_timing,
         )
+        _update_job(job_id, message="Aligning the ordered clue list.")
+        alignment_started = perf_counter()
         matches = align_clue_words(clues, transcript_words)
+        _print_stage_timing("Alignment", perf_counter() - alignment_started)
 
         if active_session is None or active_session.video_path != video_path:
             raise RuntimeError("The active clip changed during transcription.")
@@ -246,6 +315,51 @@ def _run_transcription(
         )
 
 
+def _run_render(
+    job_id: str,
+    video_path: Path,
+    words: list[WordOverlay],
+    transcript_lines: list[TranscriptLine],
+    signature: str,
+) -> None:
+    try:
+        _update_job(job_id, state="running", message="Preparing the video overlays.")
+
+        def update_progress(progress: int) -> None:
+            _update_job(
+                job_id,
+                message=f"Rendering your video… {progress}%",
+                progress=progress,
+            )
+
+        render_annotated_video(
+            video_path,
+            FINAL_VIDEO_PATH,
+            words,
+            transcript_lines,
+            progress_callback=update_progress,
+            timing_callback=_print_stage_timing,
+        )
+        if active_session is None or active_session.video_path != video_path:
+            raise RuntimeError("The active clip changed during rendering.")
+        active_session.render_signature = signature
+        _update_job(
+            job_id,
+            state="completed",
+            message="Your video is ready to play and download.",
+            progress=100,
+        )
+    except Exception:
+        LOGGER.exception("Local video rendering failed.")
+        message = "The video could not be rendered. Check the clip and FFmpeg setup, then try again."
+        _update_job(
+            job_id,
+            state="failed",
+            message=message,
+            error=message,
+        )
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -253,7 +367,7 @@ def index() -> FileResponse:
 
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)) -> dict[str, object]:
-    global active_session, transcription_job
+    global active_session, processing_job
 
     if _job_is_running():
         raise HTTPException(
@@ -307,7 +421,7 @@ async def upload_video(file: UploadFile = File(...)) -> dict[str, object]:
         FINAL_VIDEO_PATH.unlink(missing_ok=True)
 
         active_session = ActiveSession(video_path=INPUT_VIDEO_PATH, media=media)
-        transcription_job = None
+        processing_job = None
         return {"video": _video_response(media), "setup": None}
     except OSError as exc:
         LOGGER.exception("Failed to save the uploaded clip to the local work folder.")
@@ -360,10 +474,10 @@ def save_setup(setup: SetupRequest) -> dict[str, object]:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    new_setup = {
-        "player_words": setup.player_words,
+    new_setup: SetupState = {
+        "player_words": dict(setup.player_words),
         "marker_positions": {
-            player: marker.model_dump()
+            player: {"x": marker.x, "y": marker.y}
             for player, marker in setup.marker_positions.items()
         },
         "clue_text": setup.clue_text,
@@ -376,13 +490,14 @@ def save_setup(setup: SetupRequest) -> dict[str, object]:
         active_session.clue_entries.clear()
         active_session.transcription_info = None
         active_session.transcript_text = ""
+        active_session.render_signature = None
     active_session.setup = new_setup
     return {"setup": active_session.setup, "ready": True}
 
 
 @app.post("/api/transcription")
 def start_transcription() -> dict[str, object]:
-    global transcription_job
+    global processing_job
 
     if active_session is None:
         raise HTTPException(status_code=409, detail="Upload a clip before transcription.")
@@ -395,16 +510,18 @@ def start_transcription() -> dict[str, object]:
         ClueInput(clue_word=item["word"], speaker=item["player"])
         for item in active_session.setup["clues"]
     ]
-    transcription_job = TranscriptionJob(
+    processing_job = ProcessingJob(
         id=str(uuid.uuid4()),
+        kind="transcription",
         state="queued",
         message="Waiting to start transcription.",
     )
-    job = transcription_job
+    job = processing_job
     active_session.transcript_words.clear()
     active_session.clue_entries.clear()
     active_session.transcription_info = None
     active_session.transcript_text = ""
+    active_session.render_signature = None
     threading.Thread(
         target=_run_transcription,
         args=(job.id, active_session.video_path, clues),
@@ -414,11 +531,11 @@ def start_transcription() -> dict[str, object]:
 
 
 @app.get("/api/jobs/{job_id}")
-def get_transcription_job(job_id: str) -> dict[str, object]:
+def get_job(job_id: str) -> dict[str, object]:
     with job_lock:
-        if transcription_job is None or transcription_job.id != job_id:
-            raise HTTPException(status_code=404, detail="Transcription job not found.")
-        return _job_response(transcription_job)
+        if processing_job is None or processing_job.id != job_id:
+            raise HTTPException(status_code=404, detail="Processing job not found.")
+        return _job_response(processing_job)
 
 
 @app.put("/api/review")
@@ -502,7 +619,80 @@ def save_review(review: ReviewRequest) -> dict[str, object]:
         )
 
     active_session.clue_entries = updated_entries
-    return {"clue_entries": [_entry_response(entry) for entry in updated_entries]}
+    return {
+        "clue_entries": [_entry_response(entry) for entry in updated_entries],
+        "output_ready": _output_is_ready(active_session),
+    }
+
+
+@app.post("/api/render")
+def start_render() -> dict[str, object]:
+    global processing_job
+
+    if active_session is None or active_session.setup is None:
+        raise HTTPException(status_code=409, detail="Complete the clip and player setup first.")
+    if active_session.transcription_info is None:
+        raise HTTPException(status_code=409, detail="Transcribe the clip before rendering.")
+    if _job_is_running():
+        raise HTTPException(status_code=409, detail="A processing job is already running.")
+    if any(entry.confidence == "not_found" for entry in active_session.clue_entries):
+        raise HTTPException(
+            status_code=409,
+            detail="Find or delete every not-found clue before rendering.",
+        )
+
+    matched_entries = [
+        entry
+        for entry in active_session.clue_entries
+        if entry.start is not None and entry.end is not None
+    ]
+    if not matched_entries:
+        raise HTTPException(
+            status_code=409,
+            detail="At least one clue needs a transcript match before rendering.",
+        )
+
+    player_words = active_session.setup["player_words"]
+    marker_positions = active_session.setup["marker_positions"]
+    words = [
+        WordOverlay(
+            text=player_words[player],
+            speaker=player,
+            x_percent=marker_positions[player]["x"],
+            y_percent=marker_positions[player]["y"],
+        )
+        for player in PLAYERS
+    ]
+    transcript_lines = [
+        TranscriptLine(
+            start=entry.start,
+            end=entry.end,
+            clue_word=entry.clue_word,
+            speaker=entry.speaker,
+            nudge_seconds=entry.time_nudge_seconds,
+        )
+        for entry in matched_entries
+    ]
+    signature = _render_signature(active_session)
+    processing_job = ProcessingJob(
+        id=str(uuid.uuid4()),
+        kind="render",
+        state="queued",
+        message="Waiting to start rendering.",
+    )
+    job = processing_job
+    threading.Thread(
+        target=_run_render,
+        args=(
+            job.id,
+            active_session.video_path,
+            words,
+            transcript_lines,
+            signature,
+        ),
+        daemon=True,
+    ).start()
+    return _job_response(job)
 
 
 @app.get("/api/video")
@@ -513,3 +703,10 @@ def get_video() -> FileResponse:
         active_session.video_path,
         media_type="video/mp4",
     )
+
+
+@app.get("/api/output")
+def get_output() -> FileResponse:
+    if active_session is None or not _output_is_ready(active_session):
+        raise HTTPException(status_code=404, detail="Render the current review before downloading.")
+    return FileResponse(FINAL_VIDEO_PATH, media_type="video/mp4")

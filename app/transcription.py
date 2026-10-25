@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from app.alignment import TranscriptWord
@@ -16,10 +17,16 @@ def transcribe_words(
     video_path: Path,
     hotwords: Sequence[str],
     progress_callback: Callable[[int], None] | None = None,
+    timing_callback: Callable[[str, float], None] | None = None,
 ) -> tuple[list[TranscriptWord], dict[str, Any]]:
     from faster_whisper import WhisperModel
 
+    model_started = perf_counter()
     model = WhisperModel("small", device="cpu", compute_type="int8")
+    if timing_callback is not None:
+        timing_callback("Model load", perf_counter() - model_started)
+
+    transcription_started = perf_counter()
     segments, info = model.transcribe(
         str(video_path),
         language="fr",
@@ -53,6 +60,9 @@ def transcribe_words(
                     probability=probability,
                 )
             )
+
+    if timing_callback is not None:
+        timing_callback("Transcription", perf_counter() - transcription_started)
 
     if segment_count == 0:
         raise NoSpeechDetectedError(

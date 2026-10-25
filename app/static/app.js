@@ -33,6 +33,7 @@ const elements = {
   uploadStep: document.querySelector('[data-go-step="upload"]'),
   wordsStep: document.querySelector('[data-go-step="words"]'),
   transcriptStep: document.querySelector("#transcript-step"),
+  renderStep: document.querySelector("#render-step"),
   transcriptPanel: document.querySelector("#transcript-panel"),
   transcriptVideo: document.querySelector("#transcript-video"),
   transcriptContent: document.querySelector("#transcript-content"),
@@ -47,6 +48,16 @@ const elements = {
   manualSelectHint: document.querySelector("#manual-select-hint"),
   acceptAll: document.querySelector("#accept-all"),
   startOver: document.querySelector("#start-over"),
+  renderButton: document.querySelector("#render-button"),
+  renderPanel: document.querySelector("#render-panel"),
+  renderProgress: document.querySelector("#render-progress"),
+  renderProgressTitle: document.querySelector("#render-progress-title"),
+  renderProgressMessage: document.querySelector("#render-progress-message"),
+  renderProgressBar: document.querySelector("#render-progress-bar"),
+  renderContent: document.querySelector("#render-content"),
+  finalVideo: document.querySelector("#final-video"),
+  downloadOutput: document.querySelector("#download-output"),
+  backToTranscript: document.querySelector("#back-to-transcript"),
 };
 
 let video = null;
@@ -58,6 +69,8 @@ let transcriptWords = [];
 let reviewEntries = [];
 let selectedEntryId = null;
 let transcriptionRunning = false;
+let renderingRunning = false;
+let renderOutputReady = false;
 
 function setGlobalError(message = "") {
   elements.globalError.textContent = message;
@@ -73,30 +86,39 @@ function setStep(step) {
   const isUpload = step === "upload";
   const isWords = step === "words";
   const isTranscript = step === "transcript";
+  const isRender = step === "render";
   elements.uploadPanel.hidden = !isUpload;
   elements.wordsPanel.hidden = !isWords;
   elements.transcriptPanel.hidden = !isTranscript;
+  elements.renderPanel.hidden = !isRender;
   elements.uploadStep.classList.toggle("active", isUpload);
   elements.uploadStep.classList.toggle("complete", !isUpload);
   elements.wordsStep.classList.toggle("active", isWords);
-  elements.wordsStep.classList.toggle("complete", isTranscript);
+  elements.wordsStep.classList.toggle("complete", isTranscript || isRender);
   elements.transcriptStep.classList.toggle("active", isTranscript);
+  elements.transcriptStep.classList.toggle("complete", isRender);
+  elements.renderStep.classList.toggle("active", isRender);
   elements.wordsStep.disabled = !video;
   elements.transcriptStep.disabled = (
     (!transcriptWords.length && !transcriptionRunning)
     || (transcriptWords.length > 0 && setupSnapshot() !== savedSetupSnapshot)
   );
   elements.transcriptStep.classList.toggle("unavailable", elements.transcriptStep.disabled);
+  elements.renderStep.disabled = !renderOutputReady && !renderingRunning;
+  elements.renderStep.classList.toggle("unavailable", elements.renderStep.disabled);
   elements.uploadStep.removeAttribute("aria-current");
   elements.wordsStep.removeAttribute("aria-current");
   elements.transcriptStep.removeAttribute("aria-current");
-  const stepButton = isTranscript
-    ? elements.transcriptStep
-    : isWords
-      ? elements.wordsStep
-      : elements.uploadStep;
+  elements.renderStep.removeAttribute("aria-current");
+  const stepButton = isRender
+    ? elements.renderStep
+    : isTranscript
+      ? elements.transcriptStep
+      : isWords
+        ? elements.wordsStep
+        : elements.uploadStep;
   stepButton.setAttribute("aria-current", "step");
-  const stepNumber = isTranscript ? "03" : isWords ? "02" : "01";
+  const stepNumber = isRender ? "04" : isTranscript ? "03" : isWords ? "02" : "01";
   elements.stepCount.setAttribute("aria-label", `Step ${Number(stepNumber)} of 4`);
   elements.stepCount.querySelector(".step-count-number").textContent = stepNumber;
   setGlobalError();
@@ -178,9 +200,13 @@ async function uploadFile(file) {
     transcriptWords = [];
     reviewEntries = [];
     selectedEntryId = null;
+    renderOutputReady = false;
+    renderingRunning = false;
     elements.transcriptContent.hidden = true;
     elements.transcriptionProgress.hidden = true;
     elements.transcriptStep.disabled = true;
+    elements.renderContent.hidden = true;
+    elements.renderProgress.hidden = true;
     displayVideo(result.video);
     await loadSetup(result.setup);
   } catch (error) {
@@ -244,6 +270,8 @@ function validateSetup() {
   const isSaved = setupSnapshot() === savedSetupSnapshot;
   elements.saveSetup.disabled = !ready || transcriptionRunning;
   elements.transcribeButton.disabled = !ready || !isSaved || transcriptionRunning;
+  elements.renderStep.disabled = !renderOutputReady && !renderingRunning;
+  elements.renderStep.classList.toggle("unavailable", elements.renderStep.disabled);
   elements.transcriptStep.disabled = (
     (!transcriptWords.length && !transcriptionRunning)
     || (transcriptWords.length > 0 && !isSaved)
@@ -365,15 +393,25 @@ async function loadSetup(setup = undefined) {
     applySetup(result.setup);
     transcriptWords = result.transcript_words || [];
     reviewEntries = result.clue_entries || [];
-    if (result.transcription_info) {
+    renderOutputReady = Boolean(result.output_ready);
+    const job = result.processing_job;
+    if (job?.state === "queued" || job?.state === "running") {
+      if (job.kind === "render") {
+        renderingRunning = true;
+        renderRenderJob(job);
+        setStep("render");
+      } else {
+        transcriptionRunning = true;
+        renderJob(job);
+        setStep("transcript");
+      }
+      watchProcessingJob(job.id, job.kind);
+    } else if (renderOutputReady) {
+      showRenderedVideo();
+      setStep("render");
+    } else if (result.transcription_info) {
       renderTranscript();
       setStep("transcript");
-    } else if (result.transcription_job?.state === "queued"
-      || result.transcription_job?.state === "running") {
-      transcriptionRunning = true;
-      renderJob(result.transcription_job);
-      setStep("transcript");
-      watchTranscription(result.transcription_job.id);
     } else {
       setStep("upload");
     }
@@ -403,9 +441,11 @@ async function saveSetup() {
       transcriptWords = [];
       reviewEntries = [];
       selectedEntryId = null;
+      renderOutputReady = false;
       elements.transcriptContent.hidden = true;
       elements.transcriptionProgress.hidden = true;
       elements.transcriptStep.disabled = true;
+      elements.renderContent.hidden = true;
     }
     return true;
   } catch (error) {
@@ -564,10 +604,20 @@ function renderTranscript() {
   });
 
   const notFoundCount = reviewEntries.filter((entry) => entry.confidence === "not_found").length;
-  elements.reviewBlocker.hidden = notFoundCount === 0;
-  elements.reviewBlocker.textContent = notFoundCount === 1
-    ? "Find or delete the not-found clue before rendering."
-    : `${notFoundCount} not-found clues must be found or deleted before rendering.`;
+  const matchedCount = reviewEntries.filter(
+    (entry) => entry.start !== null && entry.end !== null,
+  ).length;
+  elements.reviewBlocker.hidden = notFoundCount === 0 && matchedCount > 0;
+  elements.reviewBlocker.textContent = notFoundCount > 0
+    ? notFoundCount === 1
+      ? "Find or delete the not-found clue before rendering."
+      : `${notFoundCount} not-found clues must be found or deleted before rendering.`
+    : "At least one clue needs a transcript match before rendering.";
+  elements.renderButton.disabled = (
+    notFoundCount > 0 || matchedCount === 0 || renderingRunning
+  );
+  elements.renderStep.disabled = !renderOutputReady && !renderingRunning;
+  elements.renderStep.classList.toggle("unavailable", elements.renderStep.disabled);
   elements.acceptAll.disabled = !reviewEntries.some(
     (entry) => entry.confidence !== "not_found" && entry.review_status !== "accepted",
   );
@@ -589,6 +639,7 @@ async function persistReview() {
       body: JSON.stringify({ clue_entries: reviewEntries }),
     }));
     reviewEntries = result.clue_entries;
+    renderOutputReady = Boolean(result.output_ready);
     setGlobalError();
     renderTranscript();
     return true;
@@ -602,30 +653,76 @@ async function loadTranscriptionResult() {
   const result = await readResponse(await fetch("/api/session"));
   transcriptWords = result.transcript_words || [];
   reviewEntries = result.clue_entries || [];
+  renderOutputReady = Boolean(result.output_ready);
   renderTranscript();
 }
 
-async function watchTranscription(jobId) {
+function renderRenderJob(job) {
+  elements.renderProgress.hidden = false;
+  elements.renderContent.hidden = true;
+  elements.renderProgressTitle.textContent = job.state === "failed"
+    ? "Rendering could not finish"
+    : "Rendering your video";
+  elements.renderProgressMessage.textContent = job.message;
+  elements.renderProgressBar.style.width = `${job.progress || 0}%`;
+  elements.renderProgress.classList.toggle("failed", job.state === "failed");
+}
+
+function showRenderedVideo() {
+  const source = `/api/output?session=${Date.now()}`;
+  elements.finalVideo.src = source;
+  elements.downloadOutput.href = source;
+  elements.renderContent.hidden = false;
+  elements.renderProgress.hidden = true;
+  renderOutputReady = true;
+  renderingRunning = false;
+  elements.renderStep.disabled = false;
+  elements.renderStep.classList.remove("unavailable");
+}
+
+async function watchProcessingJob(jobId, kind) {
   while (true) {
     try {
       const job = await readResponse(await fetch(`/api/jobs/${encodeURIComponent(jobId)}`));
-      renderJob(job);
+      if (kind === "render") {
+        renderRenderJob(job);
+      } else {
+        renderJob(job);
+      }
       if (job.state === "completed") {
-        await loadTranscriptionResult();
-        transcriptionRunning = false;
-        setStep("transcript");
+        if (kind === "render") {
+          const session = await readResponse(await fetch("/api/session"));
+          if (!session.output_ready) {
+            throw new Error("The rendered video is not ready to play yet.");
+          }
+          showRenderedVideo();
+          setStep("render");
+        } else {
+          await loadTranscriptionResult();
+          transcriptionRunning = false;
+          setStep("transcript");
+        }
         validateSetup();
         return;
       }
       if (job.state === "failed") {
-        transcriptionRunning = false;
+        if (kind === "render") {
+          renderingRunning = false;
+        } else {
+          transcriptionRunning = false;
+        }
         validateSetup();
         return;
       }
       await new Promise((resolve) => window.setTimeout(resolve, 700));
     } catch (error) {
-      transcriptionRunning = false;
-      renderJob({ state: "failed", message: error.message });
+      if (kind === "render") {
+        renderingRunning = false;
+        renderRenderJob({ state: "failed", message: error.message });
+      } else {
+        transcriptionRunning = false;
+        renderJob({ state: "failed", message: error.message });
+      }
       validateSetup();
       return;
     }
@@ -635,15 +732,37 @@ async function watchTranscription(jobId) {
 async function startTranscription() {
   if (!await saveSetup()) return;
   transcriptionRunning = true;
+  transcriptWords = [];
+  reviewEntries = [];
+  selectedEntryId = null;
+  renderOutputReady = false;
+  elements.transcriptContent.hidden = true;
+  elements.renderContent.hidden = true;
   renderJob({ state: "queued", message: "Starting transcription…" });
   setStep("transcript");
   validateSetup();
   try {
     const job = await readResponse(await fetch("/api/transcription", { method: "POST" }));
-    watchTranscription(job.id);
+    watchProcessingJob(job.id, "transcription");
   } catch (error) {
     transcriptionRunning = false;
     renderJob({ state: "failed", message: error.message });
+    validateSetup();
+  }
+}
+
+async function startRender() {
+  renderingRunning = true;
+  renderRenderJob({ state: "queued", progress: 0, message: "Starting rendering…" });
+  elements.renderButton.disabled = true;
+  setStep("render");
+  validateSetup();
+  try {
+    const job = await readResponse(await fetch("/api/render", { method: "POST" }));
+    watchProcessingJob(job.id, "render");
+  } catch (error) {
+    renderingRunning = false;
+    renderRenderJob({ state: "failed", message: error.message });
     validateSetup();
   }
 }
@@ -685,6 +804,9 @@ elements.wordsStep.addEventListener("click", () => {
 });
 elements.transcriptStep.addEventListener("click", () => {
   if (transcriptWords.length || transcriptionRunning) setStep("transcript");
+});
+elements.renderStep.addEventListener("click", () => {
+  if (renderOutputReady || renderingRunning) setStep("render");
 });
 
 document.querySelectorAll("[data-select-player]").forEach((button) => {
@@ -747,7 +869,9 @@ elements.videoStage.addEventListener("keydown", (event) => {
 
 elements.saveSetup.addEventListener("click", saveSetup);
 elements.transcribeButton.addEventListener("click", startTranscription);
+elements.renderButton.addEventListener("click", startRender);
 elements.startOver.addEventListener("click", () => setStep("words"));
+elements.backToTranscript.addEventListener("click", () => setStep("transcript"));
 elements.acceptAll.addEventListener("click", async () => {
   reviewEntries = reviewEntries.map((entry) => (
     entry.confidence === "not_found"
