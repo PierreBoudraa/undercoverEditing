@@ -1,6 +1,6 @@
 # Undercover Video Maker
 
-A local Windows app for turning a short, fixed-shot French Undercover clip into a manually corrected, captioned MP4.
+A local Windows app for turning a short, fixed-shot French Undercover clip into an MP4 with ordered clue words aligned to speech and placed beneath the manually selected player.
 
 ## Requirements
 
@@ -8,7 +8,7 @@ A local Windows app for turning a short, fixed-shot French Undercover clip into 
 - Python 3.13 (the project runtime; do not install or use another Python version)
 - Internet access on first transcription run to download the faster-whisper model
 
-## Setup and transcription spike
+## Setup and Windows transcription spike
 
 From the project folder, create the virtual environment with Python 3.13 and install the pinned dependencies:
 
@@ -20,7 +20,21 @@ py -3.13 -m venv .venv
 
 The sample must be an MP4 between 30 and 60 seconds. The spike prints timestamped French transcription lines and separate PASS/FAIL results for transcription and ASS subtitle burn-in. It writes a short subtitle test video under `workdir\spike\`; open it to confirm the text is visible.
 
-Whisper's `small` model can misrecognize rare words and overlapping speech. The app is designed for manual transcript correction, so treat the first transcript as a draft.
+## Run the manual-player alignment spike
+
+The spike transcribes word-level timestamps, aligns the ordered clue list, applies the configured display timing, and writes a JSON report plus three-second verification clips:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\alignment_spike.py "C:\path\to\sample.mp4"
+```
+
+The sample fixture contains the ordered assignments `psychiatrique, Left`, `fou, Center`, `Monopoly, Right`, and `abandonné, Left`. Results are written under `workdir\verification_clips\`; the script opens that folder after it finishes. Check the report's match confidence, manually supplied player, anchor time, display time, and clip for each found clue. Low-confidence matches need a look but do not block rendering; only a not-found clue blocks it.
+
+The earlier motion-attribution experiment was dropped after 2 of 4 player suggestions looked correct on the sample.
+
+For display timing, intervals longer than 0.8 seconds anchor at the later of the interval start or 0.5 seconds before its end. Shorter intervals anchor at their start. The configured `CLUE_OFFSET_SECONDS` is then applied; review nudges are 0.1 seconds.
+
+Planning references: [scope](devpost/scope.md), [PRD](devpost/prd.md), [technical spec](devpost/spec.md).
 
 If the bundled FFmpeg fails the ASS test, install the approved full build and configure its executable explicitly:
 
@@ -30,12 +44,12 @@ $env:FFMPEG_EXE = "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe scripts\transcription_spike.py "C:\path\to\sample.mp4"
 ```
 
-## Run the app (after the remaining build slices)
+## Run the app (once the remaining build slices are complete)
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`. The app runs locally; no account, API key, database, or deployment is needed.
+Open `http://127.0.0.1:8000`. Enter the player words and marker positions, then enter each ordered clue as `word, Left|Center|Right`. Review uncertain matches and timing before rendering. The app runs locally; no account, API key, database, or deployment is needed.
 
 Keep personal video samples and rendered MP4s out of Git. They are ignored by `.gitignore`.
