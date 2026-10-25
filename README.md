@@ -1,57 +1,62 @@
 # Undercover Video Maker
 
-A local Windows app for turning a short, fixed-shot French Undercover clip into an MP4 with ordered clue words aligned to speech and placed beneath the manually selected player.
+Undercover Video Maker is a local Windows app for turning a short French Undercover recording into an edited MP4. It transcribes the clip, aligns creator-supplied clue words to timestamps, and renders each player's word and assigned clue words onto the video.
 
-## Requirements
+## Full flow
 
-- Windows
-- Python 3.13 (the project runtime; do not install or use another Python version)
-- Internet access on first transcription run to download the faster-whisper model
+Upload → Words → Transcript → Render.
 
-## Setup and Windows transcription spike
+1. **Upload** a readable MP4 between 30 and 60 seconds long.
+2. **Words:** enter one word for each player, click above each player's head to place its marker, then enter clue assignments in the order spoken. Use one `word, Left|Center|Right` entry per line, for example `psychiatrique, Left`.
+3. **Transcript:** run local French transcription, review the matched word and timing, change a player or nudge timing, and manually select a transcript word for any not-found clue. Low-confidence matches are allowed; not-found clues must be resolved or deleted before rendering.
+4. **Render:** preview and download the MP4. Return to Transcript to correct an entry and render again without redoing Upload or Words.
 
-From the project folder, create the virtual environment with Python 3.13 and install the pinned dependencies:
+## How to run (Windows)
+
+Requirements: Python 3.13 and internet access on the first transcription run. From the project folder, create the environment, install the pinned dependencies, and start the local server:
 
 ```powershell
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe scripts\transcription_spike.py "C:\path\to\sample.mp4"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-The sample must be an MP4 between 30 and 60 seconds. The spike prints timestamped French transcription lines and separate PASS/FAIL results for transcription and ASS subtitle burn-in. It writes a short subtitle test video under `workdir\spike\`; open it to confirm the text is visible.
+Open `http://127.0.0.1:8000`. On the first transcription, faster-whisper downloads its model to the local cache; later runs reuse it. Transcription uses the local CPU by default and requires no API key.
 
-## Run the manual-player alignment spike
+### FFmpeg
 
-The spike transcribes word-level timestamps, aligns the ordered clue list, applies the configured display timing, and writes a JSON report plus three-second verification clips:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\alignment_spike.py "C:\path\to\sample.mp4"
-```
-
-The sample fixture contains the ordered assignments `psychiatrique, Left`, `fou, Center`, `Monopoly, Right`, and `abandonné, Left`. Results are written under `workdir\verification_clips\`; the script opens that folder after it finishes. Check the report's match confidence, manually supplied player, anchor time, display time, and clip for each found clue. Low-confidence matches need a look but do not block rendering; only a not-found clue blocks it.
-
-The earlier motion-attribution experiment was dropped after 2 of 4 player suggestions looked correct on the sample.
-
-For display timing, intervals longer than 0.8 seconds anchor at the later of the interval start or 0.5 seconds before its end. Shorter intervals anchor at their start. The configured `CLUE_OFFSET_SECONDS` is then applied; review nudges are 0.1 seconds.
-
-Planning references: [scope](devpost/scope.md), [PRD](devpost/prd.md), [technical spec](devpost/spec.md).
-
-If the bundled FFmpeg fails the ASS test, install the approved full build and configure its executable explicitly:
+The app first uses the FFmpeg executable bundled with `imageio-ffmpeg`; it must include the ASS subtitle filter. If that filter is unavailable, install a full Windows build and set `FFMPEG_EXE` in the same PowerShell window before starting the app:
 
 ```powershell
 winget install --id Gyan.FFmpeg.Shared --exact
 $env:FFMPEG_EXE = "C:\path\to\ffmpeg.exe"
-.\.venv\Scripts\python.exe scripts\transcription_spike.py "C:\path\to\sample.mp4"
-```
-
-## Run the local app
-
-```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`. The app supports Upload, Words, and Transcript: upload a readable 30–60 second MP4, enter each player's word, click the first-frame preview to place their marker, and enter ordered clues as `word, Left|Center|Right`. Save the setup, then start local French transcription. The first transcription run may download the faster-whisper model. Review each matched clue, adjust its player or timing, accept low-confidence matches, and select a transcript word for any not-found clue. Rendering is the next build step.
+## Sample processing timings
 
-The app runs locally; no account, API key, database, or deployment is needed.
+One local run on a 58-second clip took about 92 seconds overall. These are observations from one machine, not a performance benchmark.
 
-Keep personal video samples and rendered MP4s out of Git. They are ignored by `.gitignore`.
+| Stage | Time |
+| --- | ---: |
+| Model load | 5.1 s |
+| Transcription | 71.8 s |
+| Alignment | 0.05 s |
+| ASS generation | 0.01 s |
+| FFmpeg rendering | 14.7 s |
+
+A corrected rerender took about 16 seconds in FFmpeg. The stages are timed separately so future performance work can focus on the actual bottleneck.
+
+## Speaker assignment
+
+The creator enters each clue's player explicitly; automatic speaker attribution is not used. A motion-based attribution experiment was dropped after only 2 of 4 player suggestions looked correct on the sample.
+
+## Project documents
+
+- [Project scope](devpost/scope.md)
+- [Product requirements](devpost/prd.md)
+- [Technical specification](devpost/spec.md)
+- [Build checklist and review record](devpost/checklist.md)
+- [App map](devpost/app-map.html)
+
+Keep personal video samples and rendered MP4s out of Git. They are local work files and are ignored by `.gitignore`.
