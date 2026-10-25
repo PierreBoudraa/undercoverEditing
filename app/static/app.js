@@ -32,6 +32,21 @@ const elements = {
   stepCount: document.querySelector(".step-count"),
   uploadStep: document.querySelector('[data-go-step="upload"]'),
   wordsStep: document.querySelector('[data-go-step="words"]'),
+  transcriptStep: document.querySelector("#transcript-step"),
+  transcriptPanel: document.querySelector("#transcript-panel"),
+  transcriptVideo: document.querySelector("#transcript-video"),
+  transcriptContent: document.querySelector("#transcript-content"),
+  transcriptionProgress: document.querySelector("#transcription-progress"),
+  progressTitle: document.querySelector("#progress-title"),
+  progressMessage: document.querySelector("#progress-message"),
+  transcriptWords: document.querySelector("#transcript-words"),
+  transcriptWordCount: document.querySelector("#transcript-word-count"),
+  reviewList: document.querySelector("#review-list"),
+  reviewCount: document.querySelector("#review-count"),
+  reviewBlocker: document.querySelector("#review-blocker"),
+  manualSelectHint: document.querySelector("#manual-select-hint"),
+  acceptAll: document.querySelector("#accept-all"),
+  startOver: document.querySelector("#start-over"),
 };
 
 let video = null;
@@ -39,6 +54,10 @@ let selectedPlayer = "left";
 let markerPositions = {};
 let draggingPlayer = null;
 let savedSetupSnapshot = "";
+let transcriptWords = [];
+let reviewEntries = [];
+let selectedEntryId = null;
+let transcriptionRunning = false;
 
 function setGlobalError(message = "") {
   elements.globalError.textContent = message;
@@ -51,18 +70,35 @@ function setUploadStatus(message, isError = false) {
 }
 
 function setStep(step) {
+  const isUpload = step === "upload";
   const isWords = step === "words";
-  elements.uploadPanel.hidden = isWords;
+  const isTranscript = step === "transcript";
+  elements.uploadPanel.hidden = !isUpload;
   elements.wordsPanel.hidden = !isWords;
-  elements.uploadStep.classList.toggle("active", !isWords);
-  elements.uploadStep.classList.toggle("complete", isWords);
+  elements.transcriptPanel.hidden = !isTranscript;
+  elements.uploadStep.classList.toggle("active", isUpload);
+  elements.uploadStep.classList.toggle("complete", !isUpload);
   elements.wordsStep.classList.toggle("active", isWords);
+  elements.wordsStep.classList.toggle("complete", isTranscript);
+  elements.transcriptStep.classList.toggle("active", isTranscript);
   elements.wordsStep.disabled = !video;
+  elements.transcriptStep.disabled = (
+    (!transcriptWords.length && !transcriptionRunning)
+    || (transcriptWords.length > 0 && setupSnapshot() !== savedSetupSnapshot)
+  );
+  elements.transcriptStep.classList.toggle("unavailable", elements.transcriptStep.disabled);
   elements.uploadStep.removeAttribute("aria-current");
   elements.wordsStep.removeAttribute("aria-current");
-  (isWords ? elements.wordsStep : elements.uploadStep).setAttribute("aria-current", "step");
-  elements.stepCount.setAttribute("aria-label", isWords ? "Step 2 of 4" : "Step 1 of 4");
-  elements.stepCount.querySelector(".step-count-number").textContent = isWords ? "02" : "01";
+  elements.transcriptStep.removeAttribute("aria-current");
+  const stepButton = isTranscript
+    ? elements.transcriptStep
+    : isWords
+      ? elements.wordsStep
+      : elements.uploadStep;
+  stepButton.setAttribute("aria-current", "step");
+  const stepNumber = isTranscript ? "03" : isWords ? "02" : "01";
+  elements.stepCount.setAttribute("aria-label", `Step ${Number(stepNumber)} of 4`);
+  elements.stepCount.querySelector(".step-count-number").textContent = stepNumber;
   setGlobalError();
 
   if (isWords && elements.wordsVideo.readyState >= 1) {
@@ -97,6 +133,7 @@ function displayVideo(info) {
   const source = videoUrl();
   elements.uploadPreview.src = source;
   elements.wordsVideo.src = source;
+  elements.transcriptVideo.src = source;
   elements.clipDuration.textContent = `${info.duration_seconds.toFixed(1)} sec`;
   elements.clipDimensions.textContent = `${info.width} × ${info.height}`;
   elements.uploadPreviewCard.hidden = false;
@@ -138,6 +175,12 @@ async function uploadFile(file) {
       await fetch("/api/upload", { method: "POST", body: form }),
     );
     resetSetup();
+    transcriptWords = [];
+    reviewEntries = [];
+    selectedEntryId = null;
+    elements.transcriptContent.hidden = true;
+    elements.transcriptionProgress.hidden = true;
+    elements.transcriptStep.disabled = true;
     displayVideo(result.video);
     await loadSetup(result.setup);
   } catch (error) {
@@ -198,15 +241,21 @@ function validateSetup() {
   elements.clueText.setAttribute("aria-invalid", clueError ? "true" : "false");
 
   const ready = Boolean(video && !missingPlayer && !missingMarker && !clueError);
-  elements.saveSetup.disabled = !ready;
-  elements.transcribeButton.disabled = true;
+  const isSaved = setupSnapshot() === savedSetupSnapshot;
+  elements.saveSetup.disabled = !ready || transcriptionRunning;
+  elements.transcribeButton.disabled = !ready || !isSaved || transcriptionRunning;
+  elements.transcriptStep.disabled = (
+    (!transcriptWords.length && !transcriptionRunning)
+    || (transcriptWords.length > 0 && !isSaved)
+  );
+  elements.transcriptStep.classList.toggle("unavailable", elements.transcriptStep.disabled);
   elements.setupStatus.classList.toggle("ready", ready);
   elements.setupStatusDot.classList.toggle("status-dot-muted", !ready);
 
   if (ready) {
-    elements.setupStatus.textContent = setupSnapshot() === savedSetupSnapshot
-      ? "Setup saved for this session. Transcription is added in the next build step."
-      : "Setup is ready. Save it to this session before transcription is added.";
+    elements.setupStatus.textContent = isSaved
+      ? "Setup saved for this session. Ready to transcribe."
+      : "Setup is ready. Save it before starting transcription.";
   } else if (missingPlayer) {
     elements.setupStatus.textContent = `Enter a word for ${missingPlayer.name}.`;
   } else if (missingMarker) {
@@ -314,13 +363,28 @@ async function loadSetup(setup = undefined) {
     const result = await readResponse(await fetch("/api/session"));
     if (result.video) displayVideo(result.video);
     applySetup(result.setup);
+    transcriptWords = result.transcript_words || [];
+    reviewEntries = result.clue_entries || [];
+    if (result.transcription_info) {
+      renderTranscript();
+      setStep("transcript");
+    } else if (result.transcription_job?.state === "queued"
+      || result.transcription_job?.state === "running") {
+      transcriptionRunning = true;
+      renderJob(result.transcription_job);
+      setStep("transcript");
+      watchTranscription(result.transcription_job.id);
+    } else {
+      setStep("upload");
+    }
   } catch (error) {
     setGlobalError(error.message);
   }
 }
 
 async function saveSetup() {
-  if (!validateSetup()) return;
+  if (!validateSetup()) return false;
+  const setupChanged = setupSnapshot() !== savedSetupSnapshot;
   elements.saveSetup.disabled = true;
   elements.setupStatus.textContent = "Saving setup…";
   try {
@@ -335,10 +399,251 @@ async function saveSetup() {
     }));
     savedSetupSnapshot = setupSnapshot();
     applySetup(result.setup);
+    if (setupChanged) {
+      transcriptWords = [];
+      reviewEntries = [];
+      selectedEntryId = null;
+      elements.transcriptContent.hidden = true;
+      elements.transcriptionProgress.hidden = true;
+      elements.transcriptStep.disabled = true;
+    }
+    return true;
   } catch (error) {
     elements.setupStatus.textContent = error.message;
     elements.setupStatus.classList.remove("ready");
+    return false;
   } finally {
+    validateSetup();
+  }
+}
+
+function formatTime(seconds) {
+  return `${seconds.toFixed(2)}s`;
+}
+
+function renderJob(job) {
+  elements.transcriptionProgress.hidden = false;
+  elements.transcriptContent.hidden = true;
+  elements.progressTitle.textContent = job.state === "failed"
+    ? "Transcription could not finish"
+    : "Transcription in progress";
+  elements.progressMessage.textContent = job.message;
+  elements.transcriptionProgress.classList.toggle("failed", job.state === "failed");
+}
+
+function renderTranscript() {
+  elements.transcriptVideo.src = videoUrl();
+  elements.transcriptionProgress.hidden = true;
+  elements.transcriptContent.hidden = false;
+  elements.transcriptWordCount.textContent = `${transcriptWords.length} WORDS`;
+  elements.reviewCount.textContent = `${reviewEntries.length} CLUES`;
+
+  elements.transcriptWords.replaceChildren();
+  transcriptWords.forEach((word, index) => {
+    const token = document.createElement("button");
+    token.type = "button";
+    token.className = "transcript-token";
+    token.dataset.wordIndex = String(index);
+    token.textContent = word.text;
+    token.title = `${formatTime(word.start)} – ${formatTime(word.end)}`;
+    if (reviewEntries.some((entry) => entry.token_start_index !== null
+      && entry.token_end_index !== null
+      && entry.token_start_index <= index
+      && entry.token_end_index >= index)) {
+      token.classList.add("matched");
+    }
+    elements.transcriptWords.append(token);
+  });
+
+  elements.reviewList.replaceChildren();
+  reviewEntries.forEach((entry, index) => {
+    const row = document.createElement("article");
+    row.className = `review-entry confidence-${entry.confidence}`;
+    if (selectedEntryId === entry.id) row.classList.add("selecting");
+
+    const heading = document.createElement("div");
+    heading.className = "review-entry-heading";
+    const label = document.createElement("span");
+    label.className = "review-entry-number";
+    label.textContent = `CLUE ${String(index + 1).padStart(2, "0")}`;
+    const confidence = document.createElement("span");
+    confidence.className = `confidence-tag confidence-${entry.confidence}`;
+    confidence.textContent = entry.confidence === "high"
+      ? "MATCHED"
+      : entry.confidence === "review"
+        ? "CHECK MATCH"
+        : "NOT FOUND";
+    heading.append(label, confidence);
+
+    const fields = document.createElement("div");
+    fields.className = "review-fields";
+    const clueInput = document.createElement("input");
+    clueInput.type = "text";
+    clueInput.value = entry.clue_word;
+    clueInput.setAttribute("aria-label", `Edit clue ${index + 1}`);
+    clueInput.dataset.entryId = entry.id;
+    clueInput.dataset.reviewField = "clue_word";
+
+    const playerSelect = document.createElement("select");
+    playerSelect.setAttribute("aria-label", `Player for clue ${index + 1}`);
+    playerSelect.dataset.entryId = entry.id;
+    playerSelect.dataset.reviewField = "speaker";
+    for (const player of PLAYERS) {
+      const option = document.createElement("option");
+      option.value = player.id;
+      option.textContent = player.name;
+      option.selected = entry.speaker === player.id;
+      playerSelect.append(option);
+    }
+    fields.append(clueInput, playerSelect);
+
+    const matchText = document.createElement("p");
+    matchText.className = "match-text";
+    matchText.textContent = entry.matched_text
+      ? `Heard: “${entry.matched_text}”`
+      : "No matching word was found in the transcript.";
+
+    const timing = document.createElement("div");
+    timing.className = "review-timing";
+    const timeLabel = document.createElement("span");
+    timeLabel.textContent = entry.display_time_seconds === null
+      ? "Time not set"
+      : `Display at ${formatTime(entry.display_time_seconds)}`;
+    timing.append(timeLabel);
+
+    if (entry.start !== null) {
+      const seekButton = document.createElement("button");
+      seekButton.type = "button";
+      seekButton.className = "text-button";
+      seekButton.textContent = "▶ Listen";
+      seekButton.dataset.entryId = entry.id;
+      seekButton.dataset.reviewAction = "seek";
+      timing.append(seekButton);
+
+      for (const direction of [-1, 1]) {
+        const nudge = document.createElement("button");
+        nudge.type = "button";
+        nudge.className = "nudge-button";
+        nudge.textContent = direction < 0 ? "−0.1s" : "+0.1s";
+        nudge.setAttribute("aria-label", `${direction < 0 ? "Earlier" : "Later"} by 0.1 seconds`);
+        nudge.dataset.entryId = entry.id;
+        nudge.dataset.nudge = String(direction);
+        timing.append(nudge);
+      }
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "review-entry-actions";
+    if (entry.confidence === "not_found") {
+      const findButton = document.createElement("button");
+      findButton.type = "button";
+      findButton.className = "button button-secondary button-small";
+      findButton.textContent = selectedEntryId === entry.id ? "Select a transcript word…" : "Find in transcript";
+      findButton.dataset.entryId = entry.id;
+      findButton.dataset.reviewAction = "select-word";
+      actions.append(findButton);
+    } else {
+      const acceptButton = document.createElement("button");
+      acceptButton.type = "button";
+      acceptButton.className = "text-button";
+      acceptButton.textContent = entry.review_status === "accepted" ? "Accepted ✓" : "Accept match";
+      acceptButton.dataset.entryId = entry.id;
+      acceptButton.dataset.reviewAction = "accept";
+      actions.append(acceptButton);
+    }
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "text-button delete-entry";
+    deleteButton.textContent = "Delete";
+    deleteButton.dataset.entryId = entry.id;
+    deleteButton.dataset.reviewAction = "delete";
+    actions.append(deleteButton);
+
+    row.append(heading, fields, matchText, timing, actions);
+    elements.reviewList.append(row);
+  });
+
+  const notFoundCount = reviewEntries.filter((entry) => entry.confidence === "not_found").length;
+  elements.reviewBlocker.hidden = notFoundCount === 0;
+  elements.reviewBlocker.textContent = notFoundCount === 1
+    ? "Find or delete the not-found clue before rendering."
+    : `${notFoundCount} not-found clues must be found or deleted before rendering.`;
+  elements.acceptAll.disabled = !reviewEntries.some(
+    (entry) => entry.confidence !== "not_found" && entry.review_status !== "accepted",
+  );
+  elements.transcriptStep.disabled = (
+    (!transcriptWords.length && !transcriptionRunning)
+    || (transcriptWords.length > 0 && setupSnapshot() !== savedSetupSnapshot)
+  );
+  elements.transcriptStep.classList.toggle("unavailable", elements.transcriptStep.disabled);
+  elements.manualSelectHint.textContent = selectedEntryId
+    ? "Select the matching word in the transcript below."
+    : "Choose “Find in transcript” on a not-found clue, then select its spoken word below.";
+}
+
+async function persistReview() {
+  try {
+    const result = await readResponse(await fetch("/api/review", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clue_entries: reviewEntries }),
+    }));
+    reviewEntries = result.clue_entries;
+    setGlobalError();
+    renderTranscript();
+    return true;
+  } catch (error) {
+    setGlobalError(error.message);
+    return false;
+  }
+}
+
+async function loadTranscriptionResult() {
+  const result = await readResponse(await fetch("/api/session"));
+  transcriptWords = result.transcript_words || [];
+  reviewEntries = result.clue_entries || [];
+  renderTranscript();
+}
+
+async function watchTranscription(jobId) {
+  while (true) {
+    try {
+      const job = await readResponse(await fetch(`/api/jobs/${encodeURIComponent(jobId)}`));
+      renderJob(job);
+      if (job.state === "completed") {
+        await loadTranscriptionResult();
+        transcriptionRunning = false;
+        setStep("transcript");
+        validateSetup();
+        return;
+      }
+      if (job.state === "failed") {
+        transcriptionRunning = false;
+        validateSetup();
+        return;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+    } catch (error) {
+      transcriptionRunning = false;
+      renderJob({ state: "failed", message: error.message });
+      validateSetup();
+      return;
+    }
+  }
+}
+
+async function startTranscription() {
+  if (!await saveSetup()) return;
+  transcriptionRunning = true;
+  renderJob({ state: "queued", message: "Starting transcription…" });
+  setStep("transcript");
+  validateSetup();
+  try {
+    const job = await readResponse(await fetch("/api/transcription", { method: "POST" }));
+    watchTranscription(job.id);
+  } catch (error) {
+    transcriptionRunning = false;
+    renderJob({ state: "failed", message: error.message });
     validateSetup();
   }
 }
@@ -377,6 +682,9 @@ elements.continueToWords.addEventListener("click", () => {
 elements.uploadStep.addEventListener("click", () => setStep("upload"));
 elements.wordsStep.addEventListener("click", () => {
   if (video) setStep("words");
+});
+elements.transcriptStep.addEventListener("click", () => {
+  if (transcriptWords.length || transcriptionRunning) setStep("transcript");
 });
 
 document.querySelectorAll("[data-select-player]").forEach((button) => {
@@ -438,6 +746,77 @@ elements.videoStage.addEventListener("keydown", (event) => {
 });
 
 elements.saveSetup.addEventListener("click", saveSetup);
+elements.transcribeButton.addEventListener("click", startTranscription);
+elements.startOver.addEventListener("click", () => setStep("words"));
+elements.acceptAll.addEventListener("click", async () => {
+  reviewEntries = reviewEntries.map((entry) => (
+    entry.confidence === "not_found"
+      ? entry
+      : { ...entry, review_status: "accepted" }
+  ));
+  await persistReview();
+});
+
+elements.reviewList.addEventListener("change", async (event) => {
+  const field = event.target.closest("[data-review-field]");
+  if (!field) return;
+  const entry = reviewEntries.find((item) => item.id === field.dataset.entryId);
+  if (!entry) return;
+  entry[field.dataset.reviewField] = field.value;
+  await persistReview();
+});
+
+elements.reviewList.addEventListener("click", async (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const entry = reviewEntries.find((item) => item.id === button.dataset.entryId);
+  if (button.dataset.reviewAction === "select-word" && entry) {
+    selectedEntryId = entry.id;
+    renderTranscript();
+    return;
+  }
+  if (button.dataset.reviewAction === "seek" && entry && entry.start !== null) {
+    elements.transcriptVideo.currentTime = entry.start;
+    return;
+  }
+  if (button.dataset.reviewAction === "accept" && entry) {
+    entry.review_status = "accepted";
+  } else if (button.dataset.reviewAction === "delete" && entry) {
+    reviewEntries = reviewEntries.filter((item) => item.id !== entry.id);
+    if (selectedEntryId === entry.id) selectedEntryId = null;
+  } else if (button.dataset.nudge && entry) {
+    entry.time_nudge_seconds = Number(
+      (entry.time_nudge_seconds + Number(button.dataset.nudge) * 0.1).toFixed(1),
+    );
+  } else {
+    return;
+  }
+  await persistReview();
+});
+
+elements.transcriptWords.addEventListener("click", async (event) => {
+  const token = event.target.closest("[data-word-index]");
+  if (!token) return;
+  const index = Number(token.dataset.wordIndex);
+  const word = transcriptWords[index];
+  if (!word) return;
+  elements.transcriptVideo.currentTime = word.start;
+  if (!selectedEntryId) return;
+
+  const entry = reviewEntries.find((item) => item.id === selectedEntryId);
+  if (!entry) {
+    selectedEntryId = null;
+    renderTranscript();
+    return;
+  }
+  entry.token_start_index = index;
+  entry.token_end_index = index;
+  entry.manual_match = true;
+  entry.review_status = "accepted";
+  selectedEntryId = null;
+  await persistReview();
+});
+
 window.addEventListener("resize", () => {
   if (video && !elements.wordsPanel.hidden) fitVideoStage(video);
 });

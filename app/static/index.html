@@ -38,7 +38,7 @@
           <button class="step-item" type="button" data-go-step="words" disabled>
             <span class="step-number">02</span><span>Words</span>
           </button>
-          <button class="step-item unavailable" type="button" disabled>
+          <button id="transcript-step" class="step-item unavailable" type="button" data-go-step="transcript" disabled>
             <span class="step-number">03</span><span>Transcript</span>
           </button>
           <button class="step-item unavailable" type="button" disabled>
@@ -182,7 +182,62 @@
               <button id="transcribe-button" class="button button-primary" type="button" disabled>Transcribe <span aria-hidden="true">→</span></button>
             </div>
           </div>
-          <p class="next-step-note">Transcription is added in the next build step.</p>
+        </section>
+
+        <section id="transcript-panel" class="workspace-panel" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">STEP 03 <span class="eyebrow-separator">/</span> CHECK THE MOMENTS</p>
+              <h2>Review the transcript</h2>
+              <p class="section-copy">Check each clue against the French transcript, adjust its timing, and confirm who said it.</p>
+            </div>
+            <span class="section-index">03</span>
+          </div>
+
+          <div id="transcription-progress" class="progress-card" role="status" hidden>
+            <div class="progress-heading">
+              <span class="progress-spinner" aria-hidden="true"></span>
+              <div>
+                <h3 id="progress-title">Transcription in progress</h3>
+                <p id="progress-message" class="section-copy">Loading the French speech model.</p>
+              </div>
+            </div>
+            <div class="progress-track"><span></span></div>
+            <p class="muted-note">The first run may download the speech model. This can take a few minutes.</p>
+          </div>
+
+          <div id="transcript-content" hidden>
+            <div class="transcript-layout">
+              <section class="transcript-card" aria-labelledby="transcript-source-heading">
+                <div class="card-heading">
+                  <div>
+                    <p class="eyebrow">SOURCE VIDEO</p>
+                    <h3 id="transcript-source-heading">Listen and select a word</h3>
+                  </div>
+                  <span id="transcript-word-count" class="format-tag"></span>
+                </div>
+                <video id="transcript-video" class="preview-video" controls playsinline preload="metadata"></video>
+                <p id="manual-select-hint" class="stage-hint">Choose “Find in transcript” on a not-found clue, then select its spoken word below.</p>
+                <div id="transcript-words" class="transcript-words" aria-label="Timestamped French transcript"></div>
+              </section>
+
+              <section class="review-card" aria-labelledby="review-heading">
+                <div class="card-heading">
+                  <div>
+                    <p class="eyebrow">ORDERED CLUES</p>
+                    <h3 id="review-heading">Confirm each match</h3>
+                  </div>
+                  <span id="review-count" class="format-tag"></span>
+                </div>
+                <div id="review-list" class="review-list"></div>
+                <div id="review-blocker" class="review-blocker" role="status" hidden></div>
+                <div class="review-actions">
+                  <button id="accept-all" class="button button-secondary" type="button">Accept all found</button>
+                  <button id="start-over" class="text-button" type="button">Back to Words</button>
+                </div>
+              </section>
+            </div>
+          </div>
         </section>
 
         <footer class="page-footer">

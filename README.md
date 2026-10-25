@@ -50,7 +50,7 @@ $env:FFMPEG_EXE = "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`. The current build supports Upload and Words: upload a readable 30–60 second MP4, enter each player's word, click the first-frame preview to place their marker, and enter ordered clues as `word, Left|Center|Right`. Save the setup to the active local session. Transcription, review, and rendering are added in the following build steps.
+Open `http://127.0.0.1:8000`. The app supports Upload, Words, and Transcript: upload a readable 30–60 second MP4, enter each player's word, click the first-frame preview to place their marker, and enter ordered clues as `word, Left|Center|Right`. Save the setup, then start local French transcription. The first transcription run may download the faster-whisper model. Review each matched clue, adjust its player or timing, accept low-confidence matches, and select a transcript word for any not-found clue. Rendering is the next build step.
 
 The app runs locally; no account, API key, database, or deployment is needed.
 
