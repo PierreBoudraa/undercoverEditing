@@ -48,30 +48,31 @@ The regenerated sample report and verification clips were reviewed and approved 
   Spec ref: `spec.md > ASS Renderer and Download`, `spec.md > In-Process Job Tracker and API`, `spec.md > Data Model`, `spec.md > Where It Runs and How Someone Tries It`, `spec.md > Look and Feel`
   Build: Added a render job with FFmpeg progress and stage timings, output validation, freshness tracking, playback/download, and return-to-Transcript correction flow. The ASS renderer includes all player words and matched clues, preserves source dimensions and audio, and uses the agreed timing rules.
   Verify (mechanical): `compileall`, all 47 unit tests, `node --check app\static\app.js`, and `git diff --check` passed. The sample rendered and corrected rerender completed at 1080x1936 and 58 seconds; the extracted 2.5-second frame showed all three player-word pills and the matched clue. The corrected review persisted the Center assignment and 0.55-second display time.
-  Learner check: Deferred to the final hands-on checkpoint; the learner will inspect playback/download and try the corrected rerender.
+  Learner check: Completed during the final hands-on review: the learner confirmed the player words, clue placement/timing, download, and corrected rerender all worked.
   Commit: `Render and download matched video`.
 
 ## Hands-on Checkpoints
 
 - [x] Alignment evidence reviewed after Step 1; the user approved the report and clips before the source/docs commit and push.
 - [x] Upload + Words hands-on check after Step 2; the learner tried the flow and reported it was good, with no changes requested.
-- [ ] Final kick-the-tires exploration and feedback completed after Step 4; try the complete workflow, awkward inputs, and a corrected rerender.
+- [x] Final kick-the-tires exploration and feedback completed after Step 4; the learner reported the complete flow, overlays, download, and corrected rerender worked.
 
 ## Final Review
 
-- [ ] Final review complete — feedback resolved and learner confirms ready to ship
+- [x] Final review complete — feedback resolved and learner confirms ready to ship
+  Outcome: No product changes requested; learner explicitly confirmed the proof of concept is ready to ship.
 
 ## Code Tour and App Map
 
-- [ ] Learning activity complete — connect one actual build decision or uncertainty to the learner's social-media productivity goal.
-- [ ] Optional edit and transfer reflection addressed — offer one optional reflection after the final review.
-- [ ] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
+- [x] Learning activity complete — connect one actual build decision or uncertainty to the learner's social-media productivity goal.
+- [x] Optional edit and transfer reflection addressed — offer one optional reflection after the final review.
+- [x] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
 
-Activity and evidence: not started
-Route and stops: not started; derive from actual finished code
-Edit outcome: not started
-Reflection: not started
-Activity mode: not started
+Activity and evidence: Focused evidence-based recap using the requested 58-second sample timings. The learner identified transcription as about 78% of total runtime and named beam size, CPU threads, word timestamps, and model size as possible investigations, with clue-match accuracy as the guardrail. The source code and render-progress test confirm where the measurements come from.
+Route and stops: Reference route (not an interactive code tour): `app/static/app.js` `startRender()` and `showRenderedVideo()`; `app/main.py` `start_render()`, `_run_render()`, and `get_output()`; `app/rendering.py` `render_annotated_video()`.
+Edit outcome: No optional edit requested or needed for the proof of concept.
+Reflection: The learner supplied a project-grounded performance insight; no extra transfer question was needed.
+Activity mode: Focused investigation/recap; the learner already completed the hands-on end-to-end review.
 
 ## Revisions
 

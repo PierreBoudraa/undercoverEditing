@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Undercover Video Maker — App Map</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #111116;
+      --surface: #1b1b24;
+      --line: #343440;
+      --text: #f5f4fa;
+      --muted: #b8b6c5;
+      --purple: #a78bfa;
+      --coral: #ff6b72;
+      --yellow: #ffd34e;
+      --cyan: #52c7e8;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font: 16px/1.6 "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(960px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 40px 0 56px;
+    }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { font-size: clamp(2rem, 6vw, 3.2rem); margin: 0 0 12px; }
+    h2 { margin: 36px 0 14px; font-size: 1.55rem; }
+    h3 { margin: 0 0 8px; font-size: 1.05rem; }
+    p, li { color: var(--muted); }
+    a { color: var(--purple); }
+    a:focus-visible, summary:focus-visible {
+      outline: 3px solid var(--yellow);
+      outline-offset: 3px;
+    }
+    code, pre {
+      font: 0.92em/1.55 Consolas, "Courier New", monospace;
+    }
+    code {
+      color: #e5dcff;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      overflow-x: auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #101015;
+      color: var(--text);
+    }
+    .intro, .card, .practice, .timings {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+    }
+    .intro { padding: 24px; }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--purple);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .intro p:last-child { margin-bottom: 0; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 22px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .flow li {
+      position: relative;
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--purple);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+    .flow li:nth-child(2) { border-top-color: var(--coral); }
+    .flow li:nth-child(3) { border-top-color: var(--yellow); }
+    .flow li:nth-child(4) { border-top-color: var(--cyan); }
+    .flow li:not(:last-child)::after {
+      position: absolute;
+      top: 42%;
+      right: -20px;
+      color: var(--purple);
+      content: "→";
+      font-size: 1.25rem;
+    }
+    .flow strong, .flow code { display: block; }
+    .flow code { margin-top: 8px; font-size: 0.82rem; }
+    .route {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .card { padding: 18px; }
+    .card p:last-child { margin-bottom: 0; }
+    .timings { padding: 18px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 9px 12px; border-bottom: 1px solid var(--line); }
+    th { color: var(--text); }
+    td { color: var(--muted); }
+    .practice { padding: 20px; border-left: 4px solid var(--purple); }
+    .practice p:last-child { margin-bottom: 0; }
+    .note { font-size: 0.92rem; }
+    @media (max-width: 700px) {
+      main { padding-top: 24px; }
+      .flow, .route { grid-template-columns: 1fr; }
+      .flow { gap: 12px; }
+      .flow li:not(:last-child)::after {
+        top: auto;
+        right: auto;
+        bottom: -20px;
+        left: 50%;
+        content: "↓";
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="intro">
+      <p class="eyebrow">Build With AI · Reference</p>
+      <h1>Undercover Video Maker</h1>
+      <p>A local Windows app that transcribes a short French Undercover clip, lets the creator review clue matches, and renders an MP4 with player words and timed clue overlays.</p>
+      <p>One active session stays in memory. faster-whisper and FFmpeg run locally; there is no account, database, or hosted service.</p>
+    </header>
+
+    <section aria-labelledby="flow-title">
+      <h2 id="flow-title">One render, end to end</h2>
+      <ol class="flow">
+        <li>
+          <strong>Choose Render</strong>
+          <span>Send the reviewed entries and marker positions.</span>
+          <code>app.js · startRender()</code>
+        </li>
+        <li>
+          <strong>Validate and queue</strong>
+          <span>Check matches, collect the active session, track the job.</span>
+          <code>main.py · start_render()</code>
+        </li>
+        <li>
+          <strong>Compose the video</strong>
+          <span>Write ASS overlays, render with FFmpeg, validate the MP4.</span>
+          <code>rendering.py · render_annotated_video()</code>
+        </li>
+        <li>
+          <strong>Preview and download</strong>
+          <span>Serve the current output and allow transcript corrections.</span>
+          <code>main.py · get_output()</code>
+        </li>
+      </ol>
+      <p class="note">The rendered file is local at <code>workdir/final.mp4</code>. It preserves the source dimensions; the transcript’s player assignments are supplied by the creator.</p>
+    </section>
+
+    <section aria-labelledby="route-title">
+      <h2 id="route-title">Reference route through the code</h2>
+      <div class="route">
+        <article class="card">
+          <h3>1. Browser action</h3>
+          <p>In <code>app/static/app.js</code>, follow <code>startRender()</code> to see the request and job polling. <code>showRenderedVideo()</code> connects success to the player and download link.</p>
+        </article>
+        <article class="card">
+          <h3>2. Session and job</h3>
+          <p>In <code>app/main.py</code>, <code>start_render()</code> validates review entries; <code>_run_render()</code> passes the data to the renderer and records whether the output is current.</p>
+        </article>
+        <article class="card">
+          <h3>3. Media output</h3>
+          <p>In <code>app/rendering.py</code>, <code>render_annotated_video()</code> generates the ASS file, reports FFmpeg progress, checks the result, and publishes the final MP4.</p>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="change-title">
+      <h2 id="change-title">To change this, start here</h2>
+      <ul>
+        <li>Clue timing and player-pill placement: <code>app/rendering.py</code>, especially <code>clue_display_start()</code>, <code>_word_events()</code>, and <code>build_ass_content()</code>.</li>
+        <li>Render preconditions and output freshness: <code>app/main.py</code>, especially <code>start_render()</code> and <code>_output_is_ready()</code>.</li>
+        <li>Player colors, layout, and overlay defaults: <code>app/config.py</code>.</li>
+        <li>Transcription model and word timestamps: <code>app/transcription.py</code>, especially <code>transcribe_words()</code>.</li>
+        <li>Render progress and what the browser displays: <code>app/static/app.js</code>, especially <code>renderRenderJob()</code> and <code>showRenderedVideo()</code>.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="timing-title">
+      <h2 id="timing-title">Measured on the 58-second sample</h2>
+      <div class="timings">
+        <table>
+          <thead><tr><th scope="col">Stage</th><th scope="col">Elapsed</th></tr></thead>
+          <tbody>
+            <tr><td>Model load</td><td>5.09 s</td></tr>
+            <tr><td>Transcription</td><td>71.78 s</td></tr>
+            <tr><td>Alignment</td><td>0.05 s</td></tr>
+            <tr><td>ASS generation</td><td>0.01 s</td></tr>
+            <tr><td>FFmpeg render</td><td>14.68 s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">This was one local run, not a benchmark. A corrected rerender took 15.96 seconds in FFmpeg.</p>
+    </section>
+
+    <section aria-labelledby="practice-title">
+      <h2 id="practice-title">A practice to reuse</h2>
+      <aside class="practice">
+        <p>Measure pipeline stages before optimizing. On this sample, transcription took about 78% of the first run, while alignment and ASS generation together took under a tenth of a second. If speed becomes a real problem, test transcription settings or model size and verify the four clue matches still work.</p>
+        <p class="note">The timing hooks are in <code>app/transcription.py</code>, <code>app/main.py</code>, and <code>app/rendering.py</code>; progress/timing behavior is covered by <code>tests/test_rendering.py</code>.</p>
+      </aside>
+    </section>
+
+    <section aria-labelledby="run-title">
+      <h2 id="run-title">Run it again on Windows</h2>
+      <pre><code>py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000</code></pre>
+      <p>Open <code>http://127.0.0.1:8000</code>. The first transcription run downloads the faster-whisper model into the local cache. Rendering uses imageio-ffmpeg’s bundled binary; if its ASS subtitle filter is unavailable, follow the FFmpeg fallback in <code>README.md</code>.</p>
+      <p class="note">Source snapshot: commit <code>00564e5</code>. This map is an offline reference and may drift as the code changes.</p>
+    </section>
+  </main>
+</body>
+</html>
