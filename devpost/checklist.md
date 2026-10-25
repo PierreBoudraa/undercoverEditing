@@ -21,15 +21,15 @@ The regenerated sample report and verification clips were reviewed and approved 
   Learner check: The learner reviewed all four clips, players, and times and approved them.
   Commit: Windows transcription spike previously committed; approved alignment implementation committed as `c0dd594`.
 
-- [ ] **2. Upload a clip and enter player and clue words**
+- [x] **2. Upload a clip and enter player and clue words**
   Becomes usable: The local page accepts a valid MP4, previews it, and lets the creator enter three player words, place/drag their markers, and enter ordered `word, Player` clue rows.
   Why now: Once the spike has exposed the matching and timing behavior, the browser can collect the exact data required by the approved core journey.
   PRD ref: `prd.md > The Core Journey`, `prd.md > Screens and Layout`, `prd.md > Upload and preview`, `prd.md > Word placement`
   Spec ref: `spec.md > Local FastAPI App and Static Interface`, `spec.md > Upload and Media Validation`, `spec.md > In-Process Job Tracker and API`, `spec.md > Data Model`, `spec.md > Look and Feel`
   Build: Complete the FastAPI and static-page Upload/Words flow. Accept readable MP4 files from 30 to 60 seconds, preview the clip, and store the three player words, marker percentages, and ordered clue/player rows in the active session. Keep fixed-shot and player count as guidance, not upload validation; show clear errors for invalid files and malformed clue rows.
-  Verify (mechanical): Run `.\.venv\Scripts\python.exe -m compileall app scripts`; run `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`; start Uvicorn and verify the page loads, a valid sample is accepted with correct dimensions/duration, and invalid formats or durations are rejected.
-  Learner check: Open the local page, upload the sample, enter the player words and ordered clue words, and place/drag each marker; confirm the words and markers line up with the intended players.
-  Commit: `Add local upload and word placement`.
+  Verify (mechanical): `compileall`, all 36 unit tests, `node --check app\static\app.js`, and `git diff --check` passed. The local sample was accepted as 58 seconds at 1080x1936; the video endpoint returned byte ranges, unsupported file types were rejected, malformed clue rows returned line-specific errors, and saving/replacing a session behaved as expected.
+  Learner check: The learner tried the Upload + Words flow and said it was good; no changes were requested.
+  Commit: `a04e68a` — `Add local upload and word placement`.
 
 - [ ] **3. Transcribe, align, and review clue suggestions**
   Becomes usable: The Transcript step displays each ordered clue's matched transcript token(s), display time, manually assigned player, and match confidence; not-found rows can be fixed before rendering.
@@ -54,7 +54,7 @@ The regenerated sample report and verification clips were reviewed and approved 
 ## Hands-on Checkpoints
 
 - [x] Alignment evidence reviewed after Step 1; the user approved the report and clips before the source/docs commit and push.
-- [ ] Upload + Words hands-on check after Step 2; try an MP4, place markers, enter words and ordered clue/player rows, and report anything confusing before Transcript is built.
+- [x] Upload + Words hands-on check after Step 2; the learner tried the flow and reported it was good, with no changes requested.
 - [ ] Final kick-the-tires exploration and feedback completed after Step 4; try the complete workflow, awkward inputs, and a corrected rerender.
 
 ## Final Review
