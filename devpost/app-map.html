@@ -187,9 +187,9 @@
     <section aria-labelledby="change-title">
       <h2 id="change-title">To change this, start here</h2>
       <ul>
-        <li>Clue timing and player-pill placement: <code>app/rendering.py</code>, especially <code>clue_display_start()</code>, <code>_word_events()</code>, and <code>build_ass_content()</code>.</li>
+        <li>Overlay title, word sizing, role glows, and clue stacking: <code>app/rendering.py</code>, especially <code>build_clue_events()</code>, <code>_text_dialogues()</code>, and <code>build_ass_content()</code>.</li>
         <li>Render preconditions and output freshness: <code>app/main.py</code>, especially <code>start_render()</code> and <code>_output_is_ready()</code>.</li>
-        <li>Player colors, layout, and overlay defaults: <code>app/config.py</code>.</li>
+        <li>Overlay font, size, glow, stack spacing, and safe margins: <code>app/config.py</code>. The bundled Chewy font and Apache license are in <code>assets/fonts/</code>.</li>
         <li>Transcription model and word timestamps: <code>app/transcription.py</code>, especially <code>transcribe_words()</code>.</li>
         <li>Render progress and what the browser displays: <code>app/static/app.js</code>, especially <code>renderRenderJob()</code> and <code>showRenderedVideo()</code>.</li>
       </ul>

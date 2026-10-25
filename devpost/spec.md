@@ -20,7 +20,7 @@ PRD ref: `prd.md > The Core Journey`.
 1. The browser lets the user choose a video and sends it to the local FastAPI app. The app uses FFmpeg to confirm it can read an MP4 and determine its duration. It validates only MP4 format and 30–60 seconds—not the player count or camera framing.
 2. The app stores the accepted clip in the work folder and returns its dimensions and duration. The browser previews the clip, shows its first frame on Words, and maps marker clicks/drags to percentages of the original frame. The user enters three player words and an ordered list of `word, Left|Center|Right` clue rows.
 3. The transcription worker runs faster-whisper locally with French, CPU int8, VAD, `word_timestamps=True`, and the clue list as hotwords. Alignment searches forward once through word timestamps, including 2–3 adjacent token concatenations. Each clue keeps the player the user entered. The browser shows its transcript match, display time, player, and confidence; the user can correct a not-found match and nudge timing. Low-confidence matches are a visual cue, not a render blocker.
-4. The browser sends matched entries and word positions to the app. The renderer writes an ASS subtitle file, then runs FFmpeg to burn the three player words and found clue words into a new MP4 without cropping or resizing the input. For intervals longer than 0.8 seconds, it anchors at the later of start or end minus 0.5 seconds; otherwise it uses start. It then adds the configured offset. Each clue ends at that player's next clue, its four-second cap, or the video end.
+4. The browser sends matched entries and word positions to the app. The renderer writes an ASS subtitle file, then runs FFmpeg to burn the persistent title, three player words, and found clue words into a new MP4 without cropping or resizing the input. For intervals longer than 0.8 seconds, it anchors at the later of start or end minus 0.5 seconds; otherwise it uses start, then adds the configured offset. Every clue remains visible until video end; later clues for a player stack below earlier ones.
 5. On completion, the browser plays and downloads the rendered file. Returning to Transcript retains the active session data for corrections and another render.
 
 ```text
@@ -41,7 +41,7 @@ Local FastAPI app ─── work folder: input, session data, ASS, partial/final
 - **faster-whisper** for local French transcription, CPU `int8`, VAD enabled, starting with `small`; test `medium` only if the first result is too poor to correct. Model files download into the local model cache on first use. [faster-whisper documentation and repository](https://github.com/SYSTRAN/faster-whisper)
 - **No computer-vision or speaker-diarization package:** the player assignment comes directly from the user's ordered clue rows.
 - **FFmpeg** for input metadata and final MP4 rendering. First try the executable bundled by **imageio-ffmpeg**; the spike must verify that it includes the ASS/libass subtitle filter by burning in a test subtitle. If that fails, use a full system FFmpeg build and configure its executable path with `FFMPEG_EXE`; do not depend on PATH. [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) · [FFmpeg subtitles/ASS filter](https://ffmpeg.org/ffmpeg-filters.html#subtitles-1) · [ASS format guide](https://github.com/libass/libass/wiki/ASS-File-Format-Guide)
-- **ASS subtitle file** for timed player words and found clue words. Use ASS vector drawings for the rounded word pills and single-line styled subtitle events for large outlined white clue words. Validate the needed subtitle filter and styling in the spike before building the renderer.
+- **ASS subtitle file** for the persistent title, player words, and clue-word stack. Use styled text events with a bundled Chewy font, role-colored glow, outline, and pop-in animation. Validate the subtitle filter, font loading, and styling in the renderer.
 
 The exact tested dependency set is pinned in `requirements.txt`. On Python 3.13.5, faster-whisper 1.2.1 failed with PyAV 19.0.2 because its audio decoder passes a removed `metadata_errors` argument; PyAV 16.1.0 worked from a Windows wheel. Keep the tested PyAV pin unless the full transcription spike is rerun.
 
@@ -74,17 +74,17 @@ Open `http://127.0.0.1:8000` in a browser. For the demo, use a 30–60 second Fr
 
 ## Look and Feel
 
-Implement the PRD's single-column, approximately 900 px editing surface in plain CSS. Use a charcoal background, vivid purple primary controls/progress, and consistent Left coral, Center yellow, Right cyan. Orange is reserved for not-found or low-confidence entries and red for errors. Use an Inter-like sans-serif interface stack with system fallbacks; no network font dependency. Make the video and editing content prominent, with spacious controls and no sidebars or menus.
+Implement the PRD's single-column, approximately 900 px editing surface in plain CSS. Use a charcoal background, vivid purple primary controls/progress, and consistent Left coral, Center yellow, Right cyan. Orange is reserved for not-found or low-confidence entries and red for errors. Use an Inter-like sans-serif interface stack with system fallbacks; no network font dependency. Make the video and editing content prominent, with spacious controls and no sidebars or menus. Keep the web UI's colors and review behavior unchanged.
 
-Keep Upload and Transcript minimal and task-focused. Complete and verify the end-to-end render before spending time on visual polish.
+For the rendered video, bundle **Chewy** (`assets/fonts/Chewy-Regular.ttf`) under its Apache License 2.0 (`assets/fonts/LICENSE.txt`). Pass the repository's `assets/fonts/` directory to FFmpeg's `subtitles` filter with `fontsdir`, so the overlays do not depend on fonts installed on the user's machine.
 
-On the video, draw each entered player word in a rounded pill in its player's color, centered on that player's normalized marker. Draw every found clue in large, bold white text with a thick dark outline, centered at the assigned player's marker x-position and a shared baseline around 78% of frame height. Keep clue words on one line; do not wrap or stack them. Use the long-interval anchor rule, then add `CLUE_OFFSET_SECONDS` (default `-0.15`). For each player, end a clue at the earliest of that player's next clue start, four seconds after its start, or the video end. This keeps the bottom 15% clear for social UI.
+Draw a persistent, centered, mixed-case `Undercover` title near 12% of the frame height, with white fill, a thick black outline, and saturated red glow. The title and all words use Chewy, white fill, thick black outlines, and two fully opaque glow layers beneath the text: a wide blurred outer halo and a tighter, brighter core with a soft fade at the edge. Configure the title and word layer widths, blur, and opacity separately. Player words are centered over their normalized markers and rendered uppercase. If one of the three player words is unique while another is repeated, the unique word is undercover (vivid red `#FF1A1A`) and the repeated word is civilian (vivid green `#00FF2A`). All-identical or all-different player words use neutral white glow. Clue glow follows its assigned player's role; apply the configured slight `\fax` slant to clue words only. The web UI's coral/yellow/cyan player colors remain unchanged.
+
+Each title/player/clue overlay and all its layers pop from 120% to 100% over 150 ms at its event start. Fit each word to at most 32% of frame width, with a separate configured title-width allowance. Use the long-interval anchor rule and then add `CLUE_OFFSET_SECONDS` (default `-0.15`). Place the first clue for each player around 68% frame height; subsequent clues stack underneath it and remain visible until video end. Configured line spacing and font size shrink as needed to keep the full stack inside the safe area ending at 85% frame height (the bottom 15% remains clear). Configure the clue-word slant in `app/config.py`.
 
 ### Renderer fixture defaults
 
-For the renderer fixture, use “asile” for Left and Center and “prison” for Right. The player's heads are around 47–50% of frame height; position markers against the actual frame. Keep the baseline, clue offset, maximum duration, clue style, and pill style in `app/config.py`.
-
-Keep the word-pill font, size, fill colors, padding, corner radius, and outline in `WORD_PILL_STYLE` in `app/config.py`, so the baseline and pill appearance are easy to tune together.
+For the renderer fixture, use “asile” for Left and Center and “prison” for Right. Position the three word markers above the heads in the source frame. Keep all title, font, outline, glow, pop-in, word-fit, clue stack, and safe-margin values in `app/config.py`.
 
 ## Components
 
@@ -149,7 +149,9 @@ Implements `prd.md > Transcript review and manual player assignment` and `prd.md
 
 ### ASS Renderer and Download
 
-Generate an ASS file from the current session and render every matched entry. Store marker coordinates as normalized percentages of the source frame, then scale them against the original width and height. Use ASS vector paths for rounded player-word pills and single-line styled events for clue words. Anchor long matched intervals at `max(start, end - 0.5 seconds)` and shorter intervals at `start`, then add `CLUE_OFFSET_SECONDS` and any manual nudge. End each clue at the next matched clue for that player, its configured maximum duration (about four seconds), or video end, whichever comes first. Do not wrap, stack, or clamp clue text. Reject backslashes, braces, and control characters in rendered text to prevent ASS override tags and line breaks.
+Generate an ASS file from the current session and render every matched entry. Store marker coordinates as normalized percentages of the source frame, then scale them against the original width and height. Load `assets/fonts/Chewy-Regular.ttf` through the subtitle filter's `fontsdir` option and keep its Apache license beside the font. Use white text, a thick black outline, a colored glow, and a 120%-to-100% scale animation over 150 ms. Keep the mixed-case `Undercover` title visible for the whole video. Determine the undercover glow from a single unique player word paired with a duplicated word; use neutral white glow when all words are identical or all different. Clue glow follows its assigned player's role, and clue words use the configured slight `\fax` slant.
+
+Anchor long matched intervals at `max(start, end - 0.5 seconds)` and shorter intervals at `start`, then add `CLUE_OFFSET_SECONDS` and any manual nudge. Each clue remains visible until video end. Per-player clue stacks are chronological, beginning around 68% frame height; reduce configured line spacing and font size when needed to keep the stack above the 85% safe boundary. Auto-fit each player/clue word to about one third of frame width; keep all style, glow, sizing, stack, and safe-margin values in `app/config.py`. Reject backslashes, braces, and control characters in rendered text to prevent ASS override tags and line breaks.
 
 Run FFmpeg with argument arrays (not through a shell), the original MP4 as input, and an ASS filter. Escape the ASS filename for FFmpeg's filter parser separately from normal Windows process arguments. Re-encode video only as needed to burn in overlays, preserving source width, height, and aspect ratio; keep the audio synchronized and unchanged where the source permits. Write to a partial filename, report progress, and rename to the final output only after success. On failure, remove the partial file and preserve any earlier completed output for the active clip. If cancellation hardening is implemented, cancellation also removes its partial file.
 
@@ -189,7 +191,7 @@ undercoverEditing/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI app, local API, static page
-│   ├── config.py               # paths, match and timing thresholds, clue style, and pill style
+│   ├── config.py               # paths, matching, timing, and video overlay styles
 │   ├── jobs.py                 # in-process job state and cancellation
 │   ├── media.py                # MP4 readability/duration inspection
 │   ├── transcription.py        # faster-whisper word timestamps and hotwords
@@ -199,6 +201,10 @@ undercoverEditing/
 │       ├── index.html          # four-step interface
 │       ├── styles.css          # theme, player colors, responsive layout
 │       └── app.js              # step navigation, preview, edits, polling
+├── assets/
+│   └── fonts/
+│       ├── Chewy-Regular.ttf
+│       └── LICENSE.txt         # Apache License 2.0
 ├── scripts/
 │   ├── transcription_spike.py  # Windows transcription + ASS burn-in checks
 │   ├── alignment_fixture_data.py # local sample clue/player rows
@@ -251,7 +257,7 @@ undercoverEditing/
 - **Learner-approved alignment and assignment:** parse each clue as `word, Left|Center|Right`; use word-level timestamps, user-list hotwords, and forward-only normalized edit-distance matching (including 2–3 adjacent tokens). The entered player is authoritative; do not infer speakers.
 - **Learner-approved confidence behavior:** low-confidence matches are orange but non-blocking, and Accept all remains available. Only not-found rows block rendering; manual transcript-word selection can resolve them.
 - **Learner-approved timing:** intervals longer than `0.8` seconds anchor at `max(start, end - 0.5)`; shorter intervals anchor at `start`. Add `CLUE_OFFSET_SECONDS = -0.15` and allow ±0.1-second review nudges.
-- **Clue-word output:** render every matched clue under its entered player's marker at the 78% baseline. End at that player's next clue, after at most four seconds, or at video end.
+- **Clue-word output:** render every matched clue under its entered player's marker in a persistent stack from about 68% to at most 85% of frame height. Clues stay visible through video end.
 - **Learner-approved build sequence:** after the transcription/ASS spike, validate ordered matching and timing with a manual-player report and short verification clips, then build Upload/Words, Transcript review, and Render surfaces in separate verified slices.
 - **Learner-approved UI priority:** keep Upload and Transcript minimal; complete the end-to-end render before spending time on visual polish.
 - **Learner-approved priority:** basic plain-language errors and progress belong in the core flow. Detailed cancellation, retry, preservation, cleanup, and diagnostic-logging behavior comes last and is conditional on remaining time.

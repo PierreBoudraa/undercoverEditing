@@ -13,19 +13,43 @@ from typing import Literal, Sequence
 import imageio_ffmpeg
 
 from app.config import (
-    CAPTION_BASELINE_PERCENT,
+    CIVILIAN_GLOW_COLOR,
+    CLUE_WORD_SLANT,
+    CLUE_STACK_BOTTOM_SAFE_PERCENT,
+    CLUE_STACK_LINE_SPACING_PERCENT,
+    CLUE_STACK_START_PERCENT,
+    CLUE_WORD_FONT_HEIGHT_PERCENT,
     CLUE_OFFSET_SECONDS,
-    CLUE_WORD_MAX_DURATION_SECONDS,
-    CLUE_WORD_STYLE,
     LONG_INTERVAL_THRESHOLD_SECONDS,
     LONG_INTERVAL_WORD_DURATION_SECONDS,
+    NEUTRAL_GLOW_COLOR,
+    GlowLayerStyle,
+    OVERLAY_DEFAULT_FONT_SIZE,
+    OVERLAY_FILL_COLOR,
+    OVERLAY_FONT_DIR,
+    OVERLAY_FONT_FILE,
+    OVERLAY_FONT_NAME,
+    OVERLAY_MAX_WORD_WIDTH_PERCENT,
+    OVERLAY_OUTLINE_COLOR,
+    OVERLAY_DEFAULT_OUTLINE_WIDTH,
+    PLAYER_WORD_FONT_HEIGHT_PERCENT,
     PLAYER_COLORS,
-    WORD_PILL_STYLE,
+    POP_IN_DURATION_MILLISECONDS,
+    POP_IN_START_SCALE_PERCENT,
+    TITLE_CENTER_Y_PERCENT,
+    TITLE_FONT_HEIGHT_PERCENT,
+    TITLE_GLOW_COLOR,
+    TITLE_GLOW_LAYERS,
+    TITLE_MAX_WIDTH_PERCENT,
+    TITLE_OUTLINE_WIDTH_RATIO,
+    TITLE_TEXT,
+    UNDERCOVER_GLOW_COLOR,
+    WORD_GLOW_LAYERS,
+    WORD_OUTLINE_WIDTH_RATIO,
     resolve_ffmpeg,
 )
 
 
-BASE_STYLE_WIDTH = 1080
 Speaker = Literal["left", "center", "right"]
 
 
@@ -53,7 +77,28 @@ class ClueWordEvent:
     text: str
     speaker: Speaker
     x: int
-    bottom_y: int
+    center_y: int
+    font_size: int
+
+
+def infer_player_glows(words: Sequence[WordOverlay]) -> dict[Speaker, str]:
+    normalized_words = [word.text.strip().casefold() for word in words]
+    word_counts = {
+        text: normalized_words.count(text) for text in set(normalized_words)
+    }
+    unique_words = [text for text, count in word_counts.items() if count == 1]
+    repeated_words = [text for text, count in word_counts.items() if count == 2]
+    if len(unique_words) == 1 and len(repeated_words) == 1:
+        undercover_word = unique_words[0]
+        return {
+            word.speaker: (
+                UNDERCOVER_GLOW_COLOR
+                if word.text.strip().casefold() == undercover_word
+                else CIVILIAN_GLOW_COLOR
+            )
+            for word in words
+        }
+    return {word.speaker: NEUTRAL_GLOW_COLOR for word in words}
 
 
 def ass_timestamp(seconds: float) -> str:
@@ -154,8 +199,54 @@ def _rgb_to_ass_color(value: str) -> str:
 def _estimated_text_width(text: str, font_size: int) -> float:
     narrow = " ilI!.,:;'|"
     wide = "MW@%&"
-    units = sum(0.29 if char in narrow else 0.88 if char in wide else 0.54 for char in text)
-    return units * font_size
+    units = sum(
+        0.34 if char in narrow else 0.90 if char in wide else 0.59
+        for char in text
+    )
+    return units * font_size * 1.03
+
+
+def _fit_font_size(
+    text: str,
+    font_size: int,
+    frame_width: int,
+    max_width_percent: float,
+    shear_x: float = 0.0,
+) -> int:
+    if not math.isfinite(max_width_percent) or not 0 < max_width_percent <= 100:
+        raise ValueError("Overlay maximum width must be between 0 and 100 percent.")
+    if not math.isfinite(shear_x):
+        raise ValueError("Overlay horizontal shear must be finite.")
+    max_width = (
+        frame_width * max_width_percent / 100 / (POP_IN_START_SCALE_PERCENT / 100)
+    )
+    width_at_one_pixel = _estimated_text_width(text, 1) + abs(shear_x)
+    if width_at_one_pixel <= 0:
+        raise ValueError("Overlay text must have a measurable width.")
+    return max(1, min(font_size, math.floor(max_width / width_at_one_pixel)))
+
+
+def _stack_layout(count: int, height: int) -> tuple[list[int], int]:
+    if count < 1:
+        return [], 0
+    if not 0 < CLUE_STACK_START_PERCENT < CLUE_STACK_BOTTOM_SAFE_PERCENT < 100:
+        raise ValueError("Clue stack start and safe-margin percentages are invalid.")
+    if not math.isfinite(CLUE_STACK_LINE_SPACING_PERCENT) or CLUE_STACK_LINE_SPACING_PERCENT <= 0:
+        raise ValueError("Clue stack line spacing must be positive and finite.")
+    available_height = (
+        CLUE_STACK_BOTTOM_SAFE_PERCENT - CLUE_STACK_START_PERCENT
+    ) * height / 100
+    requested_font_size = round(height * CLUE_WORD_FONT_HEIGHT_PERCENT / 100)
+    font_size = max(1, min(requested_font_size, math.floor(available_height / count)))
+    start_y = round(height * CLUE_STACK_START_PERCENT / 100)
+    if count == 1:
+        return [start_y], font_size
+    max_spacing = (available_height - font_size) / (count - 1)
+    requested_spacing = height * CLUE_STACK_LINE_SPACING_PERCENT / 100
+    spacing = max(font_size, min(requested_spacing, max_spacing))
+    return [
+        round(start_y + index * spacing) for index in range(count)
+    ], font_size
 
 
 def build_clue_events(
@@ -169,15 +260,7 @@ def build_clue_events(
         raise ValueError("Video dimensions must be positive.")
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError("Video duration must be positive and finite.")
-    if not 0 < CAPTION_BASELINE_PERCENT < 100:
-        raise ValueError("Clue-word baseline must be between 0 and 100 percent.")
-    if (
-        not math.isfinite(CLUE_WORD_MAX_DURATION_SECONDS)
-        or CLUE_WORD_MAX_DURATION_SECONDS <= 0
-    ):
-        raise ValueError("Clue-word maximum duration must be positive and finite.")
     _validate_words(words)
-    baseline_y = round(height * CAPTION_BASELINE_PERCENT / 100)
     marker_x = {word.speaker: round(width * word.x_percent / 100) for word in words}
     lines_by_speaker: dict[Speaker, list[tuple[float, TranscriptLine]]] = {
         speaker: [] for speaker in PLAYER_COLORS
@@ -210,17 +293,9 @@ def build_clue_events(
                     f"Two {speaker} clue words cannot start at the same time."
                 )
 
-        for index, (display_start, line) in enumerate(speaker_lines):
-            next_start = (
-                speaker_lines[index + 1][0]
-                if index + 1 < len(speaker_lines)
-                else duration
-            )
-            end = min(
-                display_start + CLUE_WORD_MAX_DURATION_SECONDS,
-                next_start,
-                duration,
-            )
+        center_ys, stack_font_size = _stack_layout(len(speaker_lines), height)
+        for (display_start, line), center_y in zip(speaker_lines, center_ys):
+            end = duration
             events.append(
                 ClueWordEvent(
                     start=display_start,
@@ -228,11 +303,18 @@ def build_clue_events(
                     text=line.clue_word.strip(),
                     speaker=speaker,
                     x=marker_x[speaker],
-                    bottom_y=baseline_y,
+                    center_y=center_y,
+                    font_size=_fit_font_size(
+                        line.clue_word.strip().upper(),
+                        stack_font_size,
+                        width,
+                        OVERLAY_MAX_WORD_WIDTH_PERCENT,
+                        CLUE_WORD_SLANT,
+                    ),
                 )
             )
 
-    return sorted(events, key=lambda event: (event.start, event.speaker, event.bottom_y))
+    return sorted(events, key=lambda event: (event.start, event.speaker, event.center_y))
 
 
 def _escape_ass_text(text: str) -> str:
@@ -240,20 +322,61 @@ def _escape_ass_text(text: str) -> str:
     return text
 
 
-def _rounded_rectangle_path(width: int, height: int, radius: int) -> str:
-    radius = max(1, min(radius, width // 2, height // 2))
-    control = round(radius * 0.5523)
-    return (
-        f"m {radius} 0 l {width - radius} 0 "
-        f"b {width - radius + control} 0 {width} {radius - control} {width} {radius} "
-        f"l {width} {height - radius} "
-        f"b {width} {height - radius + control} "
-        f"{width - radius + control} {height} {width - radius} {height} "
-        f"l {radius} {height} "
-        f"b {radius - control} {height} 0 {height - radius + control} 0 {height - radius} "
-        f"l 0 {radius} "
-        f"b 0 {radius - control} {radius - control} 0 {radius} 0 c"
+def _text_dialogues(
+    text: str,
+    start: float,
+    end: float,
+    x: int,
+    y: int,
+    font_size: int,
+    glow_color: str,
+    glow_layers: tuple[GlowLayerStyle, ...],
+    outline_width_ratio: float,
+    base_layer: int,
+    max_width_percent: float,
+    frame_width: int,
+    shear_x: float = 0.0,
+) -> list[str]:
+    fitted_size = _fit_font_size(
+        text, font_size, frame_width, max_width_percent, shear_x
     )
+    escaped_text = _escape_ass_text(text)
+    shear_override = f"\\fax{shear_x:g}" if shear_x else ""
+    dialogues: list[str] = []
+    for layer_offset, glow_layer in enumerate(glow_layers):
+        transparency = round((1 - glow_layer.opacity) * 255)
+        dialogues.append(
+            (
+                f"Dialogue: {base_layer + layer_offset},"
+                f"{ass_timestamp(start)},{ass_timestamp(end)},"
+                f"OverlayText,,0,0,0,,{{\\an5\\pos({x},{y})\\fn{OVERLAY_FONT_NAME}"
+                f"{shear_override}"
+                f"\\fs{fitted_size}\\fscx{POP_IN_START_SCALE_PERCENT}"
+                f"\\fscy{POP_IN_START_SCALE_PERCENT}"
+                f"\\1c{_rgb_to_ass_color(glow_color)}\\3c{_rgb_to_ass_color(glow_color)}"
+                f"\\bord{max(1, round(fitted_size * glow_layer.border_width_ratio))}"
+                f"\\blur{max(1, round(fitted_size * glow_layer.blur_ratio))}"
+                f"\\1a&HFF&\\3a&H{transparency:02X}&\\shad0"
+                f"\\t(0,{POP_IN_DURATION_MILLISECONDS},\\fscx100\\fscy100)}}"
+                f"{escaped_text}"
+            )
+        )
+    dialogues.append(
+        (
+            f"Dialogue: {base_layer + len(glow_layers)},"
+            f"{ass_timestamp(start)},{ass_timestamp(end)},"
+            f"OverlayText,,0,0,0,,{{\\an5\\pos({x},{y})\\fn{OVERLAY_FONT_NAME}"
+            f"{shear_override}"
+            f"\\fs{fitted_size}\\fscx{POP_IN_START_SCALE_PERCENT}"
+            f"\\fscy{POP_IN_START_SCALE_PERCENT}"
+            f"\\1c{_rgb_to_ass_color(OVERLAY_FILL_COLOR)}"
+            f"\\3c{_rgb_to_ass_color(OVERLAY_OUTLINE_COLOR)}"
+            f"\\bord{max(1, round(fitted_size * outline_width_ratio))}"
+            f"\\shad0\\t(0,{POP_IN_DURATION_MILLISECONDS},\\fscx100\\fscy100)}}"
+            f"{escaped_text}"
+        ),
+    )
+    return dialogues
 
 
 def _word_events(
@@ -262,41 +385,25 @@ def _word_events(
     height: int,
     duration: float,
 ) -> list[str]:
-    scale = width / BASE_STYLE_WIDTH
-    font_size = max(12, round(WORD_PILL_STYLE.font_size * scale))
-    padding_x = max(1, round(WORD_PILL_STYLE.padding_x * scale))
-    padding_y = max(1, round(WORD_PILL_STYLE.padding_y * scale))
-    radius = max(1, round(WORD_PILL_STYLE.corner_radius * scale))
-    text_outline = max(0, round(WORD_PILL_STYLE.outline_width * scale))
-    start, end = ass_timestamp(0), ass_timestamp(duration)
+    glows = infer_player_glows(words)
     events: list[str] = []
-
     for word in words:
-        color = _rgb_to_ass_color(PLAYER_COLORS[word.speaker])
-        text_width = math.ceil(_estimated_text_width(word.text, font_size))
-        pill_width = max(font_size, text_width + padding_x * 2)
-        pill_height = font_size + padding_y * 2
-        if pill_width > width or pill_height > height:
-            raise ValueError(f"The {word.speaker} word pill is larger than the video frame.")
-        center_x = round(width * word.x_percent / 100)
-        center_y = round(height * word.y_percent / 100)
-        left = max(0, min(width - pill_width, center_x - pill_width // 2))
-        top = max(0, min(height - pill_height, center_y - pill_height // 2))
-        center_x = left + pill_width // 2
-        center_y = top + pill_height // 2
-        path = _rounded_rectangle_path(pill_width, pill_height, radius)
-        events.append(
-            f"Dialogue: 0,{start},{end},WordText,,0,0,0,,"
-            f"{{\\an7\\pos({left},{top})\\p1\\bord0\\shad0\\1c{color}}}{path}{{\\p0}}"
+        events.extend(
+            _text_dialogues(
+                word.text.strip().upper(),
+                0,
+                duration,
+                round(width * word.x_percent / 100),
+                round(height * word.y_percent / 100),
+                round(height * PLAYER_WORD_FONT_HEIGHT_PERCENT / 100),
+                glows[word.speaker],
+                WORD_GLOW_LAYERS,
+                WORD_OUTLINE_WIDTH_RATIO,
+                2,
+                OVERLAY_MAX_WORD_WIDTH_PERCENT,
+                width,
+            )
         )
-        events.append(
-            f"Dialogue: 1,{start},{end},WordText,,0,0,0,,"
-            f"{{\\an5\\pos({center_x},{center_y})"
-            f"\\fs{font_size}\\1c{_rgb_to_ass_color(WORD_PILL_STYLE.text_color)}"
-            f"\\3c{_rgb_to_ass_color(WORD_PILL_STYLE.outline_color)}"
-            f"\\bord{text_outline}\\shad0}}{_escape_ass_text(word.text)}"
-        )
-
     return events
 
 
@@ -313,9 +420,6 @@ def build_ass_content(
         raise ValueError("Video duration must be positive and finite.")
     _validate_words(words)
 
-    scale = width / BASE_STYLE_WIDTH
-    clue_font_size = max(12, round(CLUE_WORD_STYLE.font_size * scale))
-    clue_outline = max(0, round(CLUE_WORD_STYLE.outline_width * scale))
     styles = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -327,30 +431,48 @@ def build_ass_content(
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         (
-            f"Style: WordText,{WORD_PILL_STYLE.font_name},"
-            f"{int(WORD_PILL_STYLE.font_size * scale)},"
-            f"{_rgb_to_ass_color(WORD_PILL_STYLE.text_color)},"
-            "&H000000FF,&H00000000,&H80000000,-1,0,1,"
-            f"{int(WORD_PILL_STYLE.outline_width * scale)},0,5,10,10,10,1"
-        ),
-        (
-            f"Style: ClueWord,{CLUE_WORD_STYLE.font_name},{clue_font_size},"
-            f"{_rgb_to_ass_color(CLUE_WORD_STYLE.text_color)},&H000000FF,"
-            f"{_rgb_to_ass_color(CLUE_WORD_STYLE.outline_color)},&H80000000,"
-            f"-1,0,1,{clue_outline},0,2,0,0,0,1"
+            f"Style: OverlayText,{OVERLAY_FONT_NAME},{OVERLAY_DEFAULT_FONT_SIZE},"
+            f"{_rgb_to_ass_color(OVERLAY_FILL_COLOR)},&H000000FF,"
+            f"{_rgb_to_ass_color(OVERLAY_OUTLINE_COLOR)},&H00000000,"
+            f"-1,0,1,{OVERLAY_DEFAULT_OUTLINE_WIDTH},0,5,10,10,10,1"
         ),
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
-    events = _word_events(words, width, height, duration)
-    for event in build_clue_events(
-        transcript_lines, words, width, height, duration
-    ):
-        events.append(
-            f"Dialogue: 2,{ass_timestamp(event.start)},{ass_timestamp(event.end)},"
-            f"ClueWord,,0,0,0,,{{\\an2\\pos({event.x},{event.bottom_y})}}"
-            f"{_escape_ass_text(event.text)}"
+    title = _text_dialogues(
+        TITLE_TEXT,
+        0,
+        duration,
+        width // 2,
+        round(height * TITLE_CENTER_Y_PERCENT / 100),
+        round(height * TITLE_FONT_HEIGHT_PERCENT / 100),
+        TITLE_GLOW_COLOR,
+        TITLE_GLOW_LAYERS,
+        TITLE_OUTLINE_WIDTH_RATIO,
+        0,
+        TITLE_MAX_WIDTH_PERCENT,
+        width,
+    )
+    events = [*title, *_word_events(words, width, height, duration)]
+    player_glows = infer_player_glows(words)
+    for event in build_clue_events(transcript_lines, words, width, height, duration):
+        events.extend(
+            _text_dialogues(
+                event.text.upper(),
+                event.start,
+                event.end,
+                event.x,
+                event.center_y,
+                event.font_size,
+                player_glows[event.speaker],
+                WORD_GLOW_LAYERS,
+                WORD_OUTLINE_WIDTH_RATIO,
+                8,
+                OVERLAY_MAX_WORD_WIDTH_PERCENT,
+                width,
+                CLUE_WORD_SLANT,
+            )
         )
     return "\n".join([*styles, *events, ""])
 
@@ -407,6 +529,10 @@ def render_annotated_video(
         raise FileNotFoundError(f"Input video not found: {input_path}")
     if input_path.suffix.lower() != ".mp4":
         raise ValueError("Input video must be an MP4.")
+    if not OVERLAY_FONT_FILE.is_file():
+        raise FileNotFoundError(
+            f"The bundled overlay font is missing: {OVERLAY_FONT_FILE}"
+        )
 
     ffmpeg_path = (ffmpeg_path or resolve_ffmpeg()).resolve()
     input_metadata = _read_video_metadata(input_path, ffmpeg_path)
@@ -430,7 +556,10 @@ def render_annotated_video(
             if timing_callback is not None:
                 timing_callback("ASS generation", perf_counter() - ass_started)
 
-        filter_value = f"subtitles=filename='{_escape_filter_path(ass_path)}'"
+        filter_value = (
+            f"subtitles=filename='{_escape_filter_path(ass_path)}':"
+            f"fontsdir='{_escape_filter_path(OVERLAY_FONT_DIR)}'"
+        )
         command = [
             str(ffmpeg_path),
             "-hide_banner",
