@@ -7,31 +7,21 @@ status: approved
 
 Build mode: fast
 
-No commit or push before the user reviews and approves the regenerated sample report and verification clips. Motion-based speaker suggestions were tested and dropped after 2 of 4 assignments looked correct on the sample. Keep Upload and Transcript UI minimal; prioritize the end-to-end render over polish.
+The regenerated sample report and verification clips were reviewed and approved before the source/docs commit and push. Motion-based speaker suggestions were tested and dropped after 2 of 4 assignments looked correct on the sample. Keep Upload and Transcript UI minimal; prioritize the end-to-end render over polish.
 
 ## Slices
 
-- [x] **1. Prove Windows transcription and ASS burn-in**
-  Becomes usable: A standalone command-line spike reports timestamped French transcription output and separate PASS/FAIL results for transcription and burning a visible ASS subtitle into a short section of the sample clip.
-  Why now: This independently runnable spike verified the local Whisper and FFmpeg assumptions before the app was built around them.
-  PRD ref: `prd.md > What We're Building`, `prd.md > Deferred From the POC`
-  Spec ref: `spec.md > Transcription Worker`, `spec.md > ASS Renderer and Download`, `spec.md > Where It Runs and How Someone Tries It`
-  Build: This slice was completed earlier. Its script, pinned dependencies, and ignored local outputs remain the evidence.
-  Verify (mechanical): The original verification ran `.\.venv\Scripts\python.exe -m compileall scripts` and `.\.venv\Scripts\python.exe scripts\transcription_spike.py "<local sample.mp4>"`; it confirmed timestamped output and separate PASS results, and the ASS test video was inspected.
-  Learner check: The Windows sample transcription and subtitle output were inspected during the earlier spike.
-  Commit: Previously committed as `Add Windows transcription and ASS spike`.
+- [x] **1. Prove Windows transcription, ordered alignment, and display timing**
+  Becomes usable: Standalone spikes verify French word-level transcription and ASS burn-in on Windows, then report ordered clue matches, manually assigned players, and display times with playable three-second sample clips.
+  Why now: These separate commands established the local media/transcription assumptions and validated the remaining matching/timing risk before building the browser flow.
+  PRD ref: `prd.md > What We're Building`, `prd.md > Word placement`, `prd.md > Transcript review and manual player assignment`
+  Spec ref: `spec.md > Transcription Worker`, `spec.md > Word Alignment and Manual Player Assignment`, `spec.md > Alignment Spike and Verification Clips`, `spec.md > ASS Renderer and Download`, `spec.md > Where It Runs and How Someone Tries It`
+  Build: The Windows transcription/ASS spike and manual-player alignment spike are complete. The alignment parser accepts case-insensitive `word, Left|Center|Right` rows, matching is sequential and fuzzy, and the report records each assigned player and timing calculation.
+  Verify (mechanical): The transcription spike passed on the local 58-second sample. The alignment spike matched all four clues, generated four 3-second 1080x1936 clips that decoded successfully, and produced display times of 0.45, 19.94, 27.84, and 52.06 seconds. The pre-commit test run passed all 31 tests; `pip check` and the staged whitespace check passed.
+  Learner check: The learner reviewed all four clips, players, and times and approved them.
+  Commit: Windows transcription spike previously committed; approved alignment implementation committed as `c0dd594`.
 
-- [ ] **2. Validate ordered clue alignment and display timing**
-  Becomes usable: A runnable alignment spike produces a per-clue report and three-second verification clips from the local sample, making word matches, manually assigned players, and computed display times inspectable before UI integration.
-  Why now: Word alignment and timing are the remaining algorithmic uncertainties. Testing them independently exposes failures before the browser workflow is built; the regenerated result must be approved before any commit.
-  PRD ref: `prd.md > Transcript review and manual player assignment`, `prd.md > Word placement`
-  Spec ref: `spec.md > Transcription Worker`, `spec.md > Word Alignment and Manual Player Assignment`, `spec.md > Alignment Spike and Verification Clips`, `spec.md > Data Model`, `spec.md > Where It Runs and How Someone Tries It`
-  Build: Parse one `word, Left|Center|Right` clue per line, with case-insensitive players and clear line-numbered errors. Implement accent-insensitive sequential matching of one to three transcript tokens, exact matching for short words, normalized Levenshtein distances, and single-use ordered matches. Prefer high-confidence candidates, then the earliest occurrence in that tier and the shortest span; if no high-confidence candidate exists, preserve the first eligible review match. Transcribe with French, CPU int8, VAD, `word_timestamps=True`, and the clue list as hotwords; fail explicitly if word timestamps are absent. Apply the configured long-interval anchor, offset, and nudge rule. Write a JSON report and three-second clips for `psychiatrique, Left`, `fou, Center`, `Monopoly, Right`, and `abandonné, Left`. Low confidence is non-blocking; not-found rows block rendering. Open the verification folder after a successful run.
-  Verify (mechanical): Run `.\.venv\Scripts\python.exe -m compileall app scripts`; run `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`; run `.\.venv\Scripts\python.exe scripts\alignment_spike.py "C:\path\to\sample.mp4"`. Confirm each clue's match, assigned player, detected interval, anchor/display time, confidence, block status, and clip path in the report; confirm each generated clip is three seconds and playable. Explicitly report any not-found clue.
-  Learner check: Inspect the regenerated JSON report and each verification clip. Confirm the ordered match times, manually supplied players, and display times are the intended ones. No commit is made until you approve these results.
-  Commit: After explicit approval of the report and clips, commit the code and updated scope, PRD, spec, and checklist, then push to `origin`; exclude all generated media.
-
-- [ ] **3. Upload a clip and enter player and clue words**
+- [ ] **2. Upload a clip and enter player and clue words**
   Becomes usable: The local page accepts a valid MP4, previews it, and lets the creator enter three player words, place/drag their markers, and enter ordered `word, Player` clue rows.
   Why now: Once the spike has exposed the matching and timing behavior, the browser can collect the exact data required by the approved core journey.
   PRD ref: `prd.md > The Core Journey`, `prd.md > Screens and Layout`, `prd.md > Upload and preview`, `prd.md > Word placement`
@@ -41,7 +31,7 @@ No commit or push before the user reviews and approves the regenerated sample re
   Learner check: Open the local page, upload the sample, enter the player words and ordered clue words, and place/drag each marker; confirm the words and markers line up with the intended players.
   Commit: `Add local upload and word placement`.
 
-- [ ] **4. Transcribe, align, and review clue suggestions**
+- [ ] **3. Transcribe, align, and review clue suggestions**
   Becomes usable: The Transcript step displays each ordered clue's matched transcript token(s), display time, manually assigned player, and match confidence; not-found rows can be fixed before rendering.
   Why now: This wires the validated alignment behavior into the active session and supplies the manual correction path required by the PRD.
   PRD ref: `prd.md > Transcript review and manual player assignment`, `prd.md > States and Boundaries`, `prd.md > The Core Journey`
@@ -51,20 +41,21 @@ No commit or push before the user reviews and approves the regenerated sample re
   Learner check: Transcribe the sample, inspect matched words and assigned players, correct one match or time, and confirm low-confidence entries do not block rendering while not-found entries do.
   Commit: `Add transcript alignment and review`.
 
-- [ ] **5. Render and download the matched video**
+- [ ] **4. Render and download the matched video**
   Becomes usable: The Render step produces a playable MP4 with each player word above its marker and every found clue beneath its assigned player; the user can download it or return to Transcript.
   Why now: Rendering is the end-to-end payoff and depends on valid marker positions and matched clue words.
   PRD ref: `prd.md > Render and download`, `prd.md > States and Boundaries`, `prd.md > The Core Journey`
   Spec ref: `spec.md > ASS Renderer and Download`, `spec.md > In-Process Job Tracker and API`, `spec.md > Data Model`, `spec.md > Where It Runs and How Someone Tries It`, `spec.md > Look and Feel`
-  Build: Adapt the shared ASS renderer to accept all matched entries. For intervals longer than 0.8 seconds, use `max(start, end - 0.5 seconds)`; otherwise use `start`, then add `CLUE_OFFSET_SECONDS` and the review nudge. End each clue at the next clue for that player, the configured four-second cap, or video end. Preserve input dimensions and audio timing, show basic render progress/errors, provide playback/download, and retain the active session for corrections and rerendering.
+  Build: Adapt the shared ASS renderer to accept all matched entries. For intervals longer than 0.8 seconds, use `max(start, end - 0.5 seconds)`; otherwise use `start`, then add `CLUE_OFFSET_SECONDS` and the review nudge. End each clue at the next clue for that player, the configured four-second cap, or video end. Preserve input dimensions and audio timing, show basic render progress/errors, provide playback/download, and retain the active session for corrections and rerendering. Print elapsed time for model load, transcription, alignment, ASS generation, and FFmpeg rendering.
   Verify (mechanical): Run `.\.venv\Scripts\python.exe -m compileall app scripts`; run `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`; render the sample end-to-end and verify the MP4 is playable, preserves source dimensions and duration, and shows the expected player words and matched clue overlays at the expected times.
   Learner check: Play the rendered sample and inspect the overlays and download; return to Transcript, change one accepted entry, rerender, and confirm the change appears.
   Commit: `Render and download matched video`.
 
 ## Hands-on Checkpoints
 
-- [ ] Alignment evidence reviewed after Slice 2; user explicitly approves the report and clips before committing and pushing source and updated planning documents.
-- [ ] Final kick-the-tires exploration and feedback completed after Slice 5; try the complete workflow, awkward inputs, and a corrected rerender.
+- [x] Alignment evidence reviewed after Step 1; the user approved the report and clips before the source/docs commit and push.
+- [ ] Upload + Words hands-on check after Step 2; try an MP4, place markers, enter words and ordered clue/player rows, and report anything confusing before Transcript is built.
+- [ ] Final kick-the-tires exploration and feedback completed after Step 4; try the complete workflow, awkward inputs, and a corrected rerender.
 
 ## Final Review
 
@@ -85,3 +76,4 @@ Activity mode: not started
 ## Revisions
 
 - Refined clue selection after sample evidence showed that a fuzzy phrase beginning with a preceding word could beat the exact clue token immediately after it. Matching now prefers the high-confidence tier, then the earliest occurrence within that tier; when only review-level candidates exist, it keeps the first eligible multi-token match.
+- After the learner rejected motion attribution and approved manual player assignments, the completed transcription and alignment proofs were grouped as Step 1; Upload + Words is Step 2. The Render step will print per-stage elapsed time for model load, transcription, alignment, ASS generation, and FFmpeg rendering.

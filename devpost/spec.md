@@ -127,6 +127,8 @@ Load faster-whisper locally on CPU with `compute_type="int8"`, `language="fr"`, 
 
 The first spike tests transcription before the UI is built. The alignment spike consumes its word stream. If small output is too poor to match and review, rerun with medium and compare quality against speed before choosing the app model.
 
+When the full flow is wired, print elapsed times to the local console for model load, transcription, alignment, ASS generation, and FFmpeg rendering. These timings are developer diagnostics, not UI controls.
+
 Implements `prd.md > Word placement`, `prd.md > Transcript review and manual player assignment`, and `prd.md > Deferred From the POC`.
 
 ### Word Alignment and Manual Player Assignment
