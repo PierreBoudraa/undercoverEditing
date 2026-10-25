@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111116">
+    <title>Undercover Video Maker</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Undercover Video Maker home">
+          <span class="brand-mark" aria-hidden="true">U</span>
+          <span>UNDERCOVER <span class="brand-muted">/ EDITOR</span></span>
+        </a>
+        <span class="local-badge"><span class="status-dot"></span>LOCAL WORKSPACE</span>
+      </header>
+
+      <main>
+        <section class="intro">
+          <div>
+            <p class="eyebrow">YOUR NEXT CLIP, READY TO PLAY</p>
+            <h1>Make the moment <span>the punchline.</span></h1>
+            <p class="intro-copy">Set up your players and clue words. Your video stays on this computer.</p>
+          </div>
+          <div class="step-count" aria-label="Step 1 of 4">
+            <span class="step-count-number">01</span>
+            <span>of 04</span>
+          </div>
+        </section>
+
+        <nav class="step-nav" aria-label="Editing steps">
+          <button class="step-item active" type="button" data-go-step="upload" aria-current="step">
+            <span class="step-number">01</span><span>Upload</span>
+          </button>
+          <button class="step-item" type="button" data-go-step="words" disabled>
+            <span class="step-number">02</span><span>Words</span>
+          </button>
+          <button class="step-item unavailable" type="button" disabled>
+            <span class="step-number">03</span><span>Transcript</span>
+          </button>
+          <button class="step-item unavailable" type="button" disabled>
+            <span class="step-number">04</span><span>Render</span>
+          </button>
+        </nav>
+
+        <p id="global-error" class="global-error" role="alert" hidden></p>
+
+        <section id="upload-panel" class="workspace-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">STEP 01 <span class="eyebrow-separator">/</span> START WITH A CLIP</p>
+              <h2>Upload your video</h2>
+              <p class="section-copy">Choose a short MP4 of your game. We’ll check it before you continue.</p>
+            </div>
+            <span class="section-index">01</span>
+          </div>
+
+          <div id="drop-zone" class="drop-zone">
+            <div class="upload-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <p class="drop-title">Drop your Undercover clip here</p>
+            <p class="drop-hint">Fixed shot · 3 players · 30–60 seconds · MP4</p>
+            <button id="choose-file" class="button button-secondary" type="button">Choose a video</button>
+            <input id="file-input" type="file" accept=".mp4,video/mp4" hidden>
+            <p id="upload-status" class="upload-status" aria-live="polite">Your clip is checked and kept locally.</p>
+          </div>
+
+          <div id="upload-preview-card" class="preview-card" hidden>
+            <div class="preview-heading">
+              <div>
+                <p class="eyebrow">CLIP CHECKED</p>
+                <h3>Your video is ready</h3>
+              </div>
+              <button id="replace-video" class="text-button" type="button">Choose another</button>
+            </div>
+            <video id="upload-preview" class="preview-video" controls playsinline preload="metadata"></video>
+            <div class="clip-facts">
+              <span id="clip-duration">--</span>
+              <span id="clip-dimensions">--</span>
+              <span class="fact-success"><span class="status-dot"></span>MP4 verified</span>
+            </div>
+            <div class="continue-row">
+              <span class="muted-note">Next: set the three player words and positions.</span>
+              <button id="continue-to-words" class="button button-primary" type="button">Continue to Words <span aria-hidden="true">→</span></button>
+            </div>
+          </div>
+        </section>
+
+        <section id="words-panel" class="workspace-panel" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">STEP 02 <span class="eyebrow-separator">/</span> SET THE SCENE</p>
+              <h2>Place your players</h2>
+              <p class="section-copy">Choose a player, enter their word, then click above their head on the frame.</p>
+            </div>
+            <span class="section-index">02</span>
+          </div>
+
+          <div class="editor-grid">
+            <section class="video-card" aria-labelledby="frame-heading">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">PLAYER POSITIONS</p>
+                  <h3 id="frame-heading">Click to place a marker</h3>
+                </div>
+                <span class="frame-tag">FIRST FRAME</span>
+              </div>
+              <div id="video-stage" class="video-stage" tabindex="0" role="group" aria-label="Video frame. Click to place the selected player marker; drag markers to move them.">
+                <video id="words-video" muted playsinline preload="metadata"></video>
+                <div id="marker-layer" class="marker-layer" aria-live="polite"></div>
+              </div>
+              <p class="stage-hint"><span class="hint-indicator"></span>Select a player on the right, then click the frame. Drag markers to adjust.</p>
+            </section>
+
+            <section class="players-card" aria-labelledby="players-heading">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">THREE PLAYERS</p>
+                  <h3 id="players-heading">Enter their words</h3>
+                </div>
+                <span class="required-tag">ALL REQUIRED</span>
+              </div>
+              <div class="player-list">
+                <div class="player-row player-left" data-player-row="left">
+                  <button class="player-select selected" type="button" data-select-player="left" aria-pressed="true">
+                    <span class="player-token">L</span><span class="player-name">Left</span><span class="select-indicator" aria-hidden="true"></span>
+                  </button>
+                  <label class="sr-only" for="word-left">Left player's word</label>
+                  <input id="word-left" class="player-word-input" data-player-word="left" type="text" autocomplete="off" placeholder="Their word">
+                  <p class="field-error" data-player-error="left" hidden></p>
+                </div>
+                <div class="player-row player-center" data-player-row="center">
+                  <button class="player-select" type="button" data-select-player="center" aria-pressed="false">
+                    <span class="player-token">C</span><span class="player-name">Center</span><span class="select-indicator" aria-hidden="true"></span>
+                  </button>
+                  <label class="sr-only" for="word-center">Center player's word</label>
+                  <input id="word-center" class="player-word-input" data-player-word="center" type="text" autocomplete="off" placeholder="Their word">
+                  <p class="field-error" data-player-error="center" hidden></p>
+                </div>
+                <div class="player-row player-right" data-player-row="right">
+                  <button class="player-select" type="button" data-select-player="right" aria-pressed="false">
+                    <span class="player-token">R</span><span class="player-name">Right</span><span class="select-indicator" aria-hidden="true"></span>
+                  </button>
+                  <label class="sr-only" for="word-right">Right player's word</label>
+                  <input id="word-right" class="player-word-input" data-player-word="right" type="text" autocomplete="off" placeholder="Their word">
+                  <p class="field-error" data-player-error="right" hidden></p>
+                </div>
+              </div>
+              <div class="position-note"><span aria-hidden="true">↗</span> Select a row to place its marker on the frame.</div>
+            </section>
+          </div>
+
+          <section class="clue-card" aria-labelledby="clues-heading">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">CLUES IN SPOKEN ORDER</p>
+                <h3 id="clues-heading">Which player said each word?</h3>
+              </div>
+              <span class="format-tag">WORD, PLAYER</span>
+            </div>
+            <label class="sr-only" for="clue-text">Ordered clue words and players</label>
+            <textarea id="clue-text" rows="4" spellcheck="false" placeholder="psychiatrique, Left&#10;fou, Center&#10;Monopoly, Right"></textarea>
+            <div class="clue-footer">
+              <p id="clue-error" class="field-error" role="alert" hidden></p>
+              <p class="format-hint">One clue per line, in the order heard. Players: Left, Center, Right.</p>
+            </div>
+          </section>
+
+          <div class="setup-actions">
+            <div class="setup-status-wrap">
+              <span id="setup-status-dot" class="status-dot status-dot-muted"></span>
+              <p id="setup-status" class="setup-status" aria-live="polite">Complete all player words, markers, and at least one valid clue.</p>
+            </div>
+            <div class="action-buttons">
+              <button id="save-setup" class="button button-secondary" type="button" disabled>Save setup</button>
+              <button id="transcribe-button" class="button button-primary" type="button" disabled>Transcribe <span aria-hidden="true">→</span></button>
+            </div>
+          </div>
+          <p class="next-step-note">Transcription is added in the next build step.</p>
+        </section>
+
+        <footer class="page-footer">
+          <span>UNDERCOVER VIDEO MAKER</span>
+          <span>MADE FOR THE MOMENT</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

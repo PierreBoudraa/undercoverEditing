@@ -44,12 +44,14 @@ $env:FFMPEG_EXE = "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe scripts\transcription_spike.py "C:\path\to\sample.mp4"
 ```
 
-## Run the app (once the remaining build slices are complete)
+## Run the local app
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`. Enter the player words and marker positions, then enter each ordered clue as `word, Left|Center|Right`. Review uncertain matches and timing before rendering. The app runs locally; no account, API key, database, or deployment is needed.
+Open `http://127.0.0.1:8000`. The current build supports Upload and Words: upload a readable 30–60 second MP4, enter each player's word, click the first-frame preview to place their marker, and enter ordered clues as `word, Left|Center|Right`. Save the setup to the active local session. Transcription, review, and rendering are added in the following build steps.
+
+The app runs locally; no account, API key, database, or deployment is needed.
 
 Keep personal video samples and rendered MP4s out of Git. They are ignored by `.gitignore`.
