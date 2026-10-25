@@ -41,14 +41,14 @@ The regenerated sample report and verification clips were reviewed and approved 
   Learner check: Deferred to the final end-to-end review after Step 4, per the approved build pacing.
   Commit: `Add transcript alignment and review`.
 
-- [ ] **4. Render and download the matched video**
+- [x] **4. Render and download the matched video**
   Becomes usable: The Render step produces a playable MP4 with each player word above its marker and every found clue beneath its assigned player; the user can download it or return to Transcript.
   Why now: Rendering is the end-to-end payoff and depends on valid marker positions and matched clue words.
   PRD ref: `prd.md > Render and download`, `prd.md > States and Boundaries`, `prd.md > The Core Journey`
   Spec ref: `spec.md > ASS Renderer and Download`, `spec.md > In-Process Job Tracker and API`, `spec.md > Data Model`, `spec.md > Where It Runs and How Someone Tries It`, `spec.md > Look and Feel`
-  Build: Adapt the shared ASS renderer to accept all matched entries. For intervals longer than 0.8 seconds, use `max(start, end - 0.5 seconds)`; otherwise use `start`, then add `CLUE_OFFSET_SECONDS` and the review nudge. End each clue at the next clue for that player, the configured four-second cap, or video end. Preserve input dimensions and audio timing, show basic render progress/errors, provide playback/download, and retain the active session for corrections and rerendering. Print elapsed time for model load, transcription, alignment, ASS generation, and FFmpeg rendering.
-  Verify (mechanical): Run `.\.venv\Scripts\python.exe -m compileall app scripts`; run `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`; render the sample end-to-end and verify the MP4 is playable, preserves source dimensions and duration, and shows the expected player words and matched clue overlays at the expected times.
-  Learner check: Play the rendered sample and inspect the overlays and download; return to Transcript, change one accepted entry, rerender, and confirm the change appears.
+  Build: Added a render job with FFmpeg progress and stage timings, output validation, freshness tracking, playback/download, and return-to-Transcript correction flow. The ASS renderer includes all player words and matched clues, preserves source dimensions and audio, and uses the agreed timing rules.
+  Verify (mechanical): `compileall`, all 47 unit tests, `node --check app\static\app.js`, and `git diff --check` passed. The sample rendered and corrected rerender completed at 1080x1936 and 58 seconds; the extracted 2.5-second frame showed all three player-word pills and the matched clue. The corrected review persisted the Center assignment and 0.55-second display time.
+  Learner check: Deferred to the final hands-on checkpoint; the learner will inspect playback/download and try the corrected rerender.
   Commit: `Render and download matched video`.
 
 ## Hands-on Checkpoints
