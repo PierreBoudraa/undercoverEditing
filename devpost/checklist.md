@@ -10,12 +10,12 @@ Push remote: `origin` at `https://github.com/PierreBoudraa/undercoverEditing.git
 
 ## Slices
 
-- [ ] **1. Prove Windows transcription and ASS burn-in**
+- [x] **1. Prove Windows transcription and ASS burn-in**
   Becomes usable: A standalone command-line spike reports timestamped French transcription output and separate PASS/FAIL results for transcription and burning a visible one-line ASS subtitle into a short section of the sample clip.
   Why now: This independently runnable spike is the critical-risk exception: it verifies the local Whisper and FFmpeg assumptions before building the app around them.
   PRD ref: `prd.md > What We're Building`, `prd.md > Deferred From the POC`
   Spec ref: `spec.md > Transcription Worker`, `spec.md > ASS Renderer and Download`, `spec.md > Where It Runs and How Someone Tries It`
-  Build: Create the Python 3.11 environment and install minimal dependencies; implement `scripts/transcription_spike.py` to inspect a local 30–60 second clip, run faster-whisper small on CPU int8 with French and VAD, print timestamped lines, and independently test visible ASS burn-in with the configured bundled FFmpeg. If the subtitle check fails, support the specified `FFMPEG_EXE` full-build fallback. Extend `.gitignore` for local environments, work files, logs, and media; pin package versions after the Windows spike identifies working versions.
+  Build: Create the Python 3.13 environment only and install the pinned dependencies; implement `scripts/transcription_spike.py` to inspect a local 30–60 second clip, run faster-whisper small on CPU int8 with French and VAD, print timestamped lines, and independently test visible ASS burn-in with the configured bundled FFmpeg. If the subtitle check fails, support the specified `FFMPEG_EXE` full-build fallback. Extend `.gitignore` for local environments, work files, logs, and media. Resolve any package incompatibility within Python 3.13; do not install another Python runtime. The tested PyAV dependency is pinned to 16.1.0.
   Verify (mechanical): Run `.\.venv\Scripts\python.exe -m compileall scripts`; run `.\.venv\Scripts\python.exe scripts\transcription_spike.py "<local 30-60 second sample.mp4>"` and confirm separate PASS results, timestamped lines, and a playable output with visible subtitle text.
   Learner check: Run the spike on your own short French clip in PowerShell. Check that the printed transcript is readable enough to correct and that the test output video visibly contains the subtitle.
   Commit: `Add Windows transcription and ASS spike`; push this verified commit to the configured learner-approved remote, or pause and ask for a remote before pushing.
@@ -96,3 +96,6 @@ Activity mode: not started
 
 - Split the app build into a headless hand-written-data renderer proof, Upload/Words, Transcript, and Render commits. The learner requested these smaller verified checkpoints so the visual kernel can be inspected before UI integration.
 - Moved detailed cancellation, retry/recovery, cleanup, and diagnostic logging to the final conditional hardening slice; the learner prioritized the full happy path within about one day and approved basic errors/progress as the core baseline.
+- Changed the runtime target from Python 3.11 to the learner's installed Python 3.13.5; the learner explicitly requested no other Python installation and approved resolving any dependency compatibility issue within 3.13.
+- Added the renderer-test words, approximate head height, and 78% caption baseline configuration requested by the learner.
+- Verified the Python 3.13.5 spike on the learner's 58-second sample: 45 French timestamped segments, visible ASS subtitle, and the learner judged the transcript sufficient for manual correction. The sample and generated test artifacts remain local.

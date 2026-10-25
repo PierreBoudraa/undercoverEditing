@@ -34,7 +34,7 @@ Local FastAPI app ─── work folder: input, session data, ASS, partial/final
 
 ## Stack
 
-- **Python 3.11** for the local app and spike. It is a conservative Windows target for the selected ML/video packages; verify package wheels install cleanly at the start of the build. [Python documentation](https://docs.python.org/3/)
+- **Python 3.13.5** for the local app and spike, using the runtime already installed on the learner's Windows system. Verify compatible prebuilt dependency wheels in the spike; resolve any incompatibility within Python 3.13 rather than installing another Python runtime. [Python documentation](https://docs.python.org/3.13/)
 - **FastAPI + Uvicorn** for a single local HTTP server that serves the page and handles the browser's upload, job, transcript, and file requests. No separate job queue or database. [FastAPI](https://fastapi.tiangolo.com/) · [Uvicorn](https://www.uvicorn.org/)
 - **python-multipart** for FastAPI's multipart clip upload endpoint. [python-multipart](https://github.com/Kludex/python-multipart)
 - **Plain HTML, CSS, and browser JavaScript** for the four-step interface, with no React, Node, or frontend build step.
@@ -42,7 +42,7 @@ Local FastAPI app ─── work folder: input, session data, ASS, partial/final
 - **FFmpeg** for input metadata and final MP4 rendering. First try the executable bundled by **imageio-ffmpeg**; the spike must verify that it includes the ASS/libass subtitle filter by burning in a test subtitle. If that fails, use a full system FFmpeg build and configure its executable path with `FFMPEG_EXE`; do not depend on PATH. [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) · [FFmpeg subtitles/ASS filter](https://ffmpeg.org/ffmpeg-filters.html#subtitles-1) · [ASS format guide](https://github.com/libass/libass/wiki/ASS-File-Format-Guide)
 - **ASS subtitle file** for timed player words and captions. Use ASS vector drawings for the rounded word pills and normal styled subtitle events for outlined white captions. Validate the needed subtitle filter and styling in the spike before building the renderer.
 
-Versions are to be pinned in `requirements.txt` after the initial Windows installation and spike; exact versions have not yet been tested in this workspace.
+The exact tested dependency set is pinned in `requirements.txt`. On Python 3.13.5, faster-whisper 1.2.1 failed with PyAV 19.0.2 because its audio decoder passes a removed `metadata_errors` argument; PyAV 16.1.0 worked from a Windows wheel. Keep the tested PyAV pin unless the full transcription spike is rerun.
 
 ## Where It Runs and How Someone Tries It
 
@@ -51,7 +51,7 @@ The app binds to `127.0.0.1` on the Windows computer. No API keys or deployment 
 PowerShell setup and first validation:
 
 ```powershell
-py -3.11 -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe scripts\transcription_spike.py "C:\path\to\sample.mp4"
 ```
@@ -75,6 +75,10 @@ Open `http://127.0.0.1:8000` in a browser. For the demo, use a 30–60 second Fr
 Implement the PRD's single-column, approximately 900 px editing surface in plain CSS. Use a charcoal background, vivid purple primary controls/progress, and consistent Left coral, Center yellow, Right cyan. Orange is reserved for unassigned speakers and red for errors. Use an Inter-like sans-serif interface stack with system fallbacks; no network font dependency. Make the video and editing content prominent, with spacious controls and no sidebars or menus.
 
 On the video, draw each entered word in a rounded pill in its player's color, centered on that player's normalized marker. Draw subtitles in white with a thick dark outline. Caption columns use the corresponding marker's x-position as center, are at most about one third of the frame width, wrap text, and clamp to remain inside the left and right edges. All three columns share a lower-frame baseline around 78% height, leaving the bottom 15% clear for social UI. When lines assigned to one player overlap, stack them in chronological order, earlier above later; the latest active line sits at the baseline and earlier lines stack upward. Recalculate positions when an overlap ends so a remaining line returns to the baseline. Different players have independent caption columns.
+
+### Renderer fixture defaults
+
+For the renderer fixture, use “asile” for Left and Center and “prison” for Right. The player's heads are around 47–50% of frame height; position markers against the actual frame. Set the shared caption baseline with `CAPTION_BASELINE_PERCENT = 78` in `app/config.py` so it can be adjusted.
 
 ## Components
 
@@ -164,7 +168,7 @@ undercoverEditing/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI app, local API, static page
-│   ├── config.py               # work paths and FFMPEG_EXE resolution
+│   ├── config.py               # work paths, FFMPEG_EXE, and caption baseline
 │   ├── jobs.py                 # in-process job state and cancellation
 │   ├── media.py                # MP4 readability/duration inspection
 │   ├── transcription.py        # faster-whisper setup and segment results
@@ -223,5 +227,7 @@ undercoverEditing/
 
 ### Decisions and Checks During the Build
 
+The learner added renderer-test words (“asile” for Left/Center, “prison” for Right) and requested a configurable 78% caption baseline in `app/config.py`; sample player heads are around 47–50% of frame height.
+
 - The learner's useful technical uncertainty is whether faster-whisper's small CPU model can produce readable French on laughter/overlap and whether the bundled FFmpeg supports ASS burn-in on Windows. The agreed spike checks both before app code: print timestamped lines and separate PASS/FAIL results, burn a one-line ASS subtitle into a few seconds of the sample and confirm visible playback, then test medium or use the system FFmpeg fallback only when indicated by the result.
-- Exact package versions and a compatible FFmpeg codec/filter build are unverified and should be pinned/tested in the spike. No other product-defining decisions remain open.
+- The learner specified the already-installed Python 3.13.5 only and does not want another Python runtime installed. If a dependency fails, resolve it within 3.13 using a compatible version or alternative. Pin exact package versions that pass the Windows spike; verify a compatible FFmpeg codec/filter build there. No other product-defining decisions remain open.
