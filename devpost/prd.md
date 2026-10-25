@@ -13,7 +13,7 @@ Source: `scope.md > The Unique Kernel`, `scope.md > Who It's For`.
 1. Open the app and see a four-step progress bar with Upload active. Choose a 30–60 second MP4 of three players in a fixed shot.
 2. Preview the accepted clip, then go to Words. Enter one player word per person, click the video frame to mark each head, and enter each spoken clue as `word, Left|Center|Right`, one per line in the order heard.
 3. Transcribe locally with French word timestamps and the clue list as hotwords. The app aligns each list entry once, in order, among one-token or 2–3-token matches remaining after the previous match. Prefer high-confidence candidates, then the earliest occurrence in that confidence tier, then the shortest span. The player entered beside each clue is its assigned player; the app does not infer speakers. Review the matched transcript and time, manually select a transcript word when not found, nudge time by ±0.1 seconds, change the player if needed, edit/delete entries, or use Accept all. Low-confidence matches are orange but do not block rendering; only not-found rows block it.
-4. Render found entries. For a matched interval longer than 0.8 seconds, anchor at `max(start, end - 0.5 seconds)`; otherwise use its start. Add the configured offset, then show each clue beneath its assigned player until that player's next clue, at most four seconds, or video end. Download the MP4.
+4. Render found entries. For a matched interval longer than 0.8 seconds, anchor at `max(start, end - 0.5 seconds)`; otherwise use its start, then add the configured offset. Each clue appears below its assigned player and remains visible through the end of the video. Later clues for that player stack below earlier clues. Download the MP4.
 5. If corrections are needed, return to Transcript, adjust the matched word, time, or player, then render again without repeating upload or word placement.
 
 ## Screens and Layout
@@ -27,7 +27,11 @@ One centered, single-column page, about 900 px maximum width, with a four-step p
 
 ## Look and Feel
 
-Use a dark, focused editing-tool look, like a lightweight video editor rather than a generic dashboard. Dark charcoal background; vivid purple for primary actions and progress. Keep player colors consistent everywhere: Left = coral, Center = yellow, Right = cyan. Reserve orange for not-found or low-confidence matches and red for errors. Use a clean sans-serif interface font (Inter-like); use bold, rounded lettering for on-video words and clue words. Clue words are large, white, and have a thick dark outline; each player word appears above the player in a rounded pill filled with that player's color.
+Keep the web interface's dark editing-tool look and its existing player colors: Left = coral, Center = yellow, Right = cyan. Reserve orange for not-found or low-confidence matches and red for errors; do not change the review screen or its player colors.
+
+Use the bundled, Apache-2.0-licensed Chewy font for video overlays. Keep a large, centered, mixed-case `Undercover` title visible for the whole video near 12% of frame height, with white fill, a thick black outline, and saturated red glow. Render player words above their heads in uppercase with the same white, black-outline style. The title and words use two fully opaque glow layers: a wide, blurred outer halo and a tighter, brighter core that fades softly at the edge. A single word that appears once while another appears twice identifies the undercover; glow that word vivid red (`#FF1A1A`) and the repeated civilian word vivid green (`#00FF2A`). If all three words are identical or all different, use a neutral white glow. Clue words use the glow of their assigned player's role and a slight configured slant.
+
+Each overlay word scales from 120% to 100% over 0.15 seconds when it appears; all glow and text layers animate together. Fit each player and clue word to at most about one third of the frame width. Clues begin around 68% of frame height, remain visible until video end, and stack downward per player. Reduce configured line spacing and font size as needed to keep the stack above the bottom 15% safe area. Keep title and word glow colors, layer widths, blur, opacity, style, sizing, stack, and safe-margin values in `app/config.py`.
 
 ## Features and Behavior
 
@@ -74,7 +78,7 @@ Develops `scope.md > The Unique Kernel`, `scope.md > The Core Loop`, and `scope.
 - A basic rendering error is shown in plain language. If cancellation is implemented, it stops rendering, deletes partial output, and returns to Transcript with edits and speaker assignments intact.
 - On success, replace progress with a player for the finished MP4 and a Download MP4 button. Include Back to transcript so the user can correct and rerender without repeating Upload or Words.
 - On failure, show a plain-language error. Detailed retry/back actions and preservation of all prior work are hardening if time remains; technical details go to a log file rather than the screen if that hardening is completed.
-- The output displays each player's word above their head and every found clue below its manually assigned player, including low-confidence matches. A clue uses the long-interval anchor rule when its interval exceeds 0.8 seconds, otherwise its matched start; it then adds the configured `CLUE_OFFSET_SECONDS` (default `-0.15`). It ends at that player's next clue, after at most four seconds, or at video end. A player never has more than one clue word visible at once; clue words do not stack or wrap.
+- The output displays the persistent title, each player's word above their head, and every found clue below its manually assigned player, including low-confidence matches. A clue uses the long-interval anchor rule when its interval exceeds 0.8 seconds, otherwise its matched start; it then adds the configured `CLUE_OFFSET_SECONDS` (default `-0.15`). Every clue stays visible until video end; subsequent clues for a player appear below the previous ones. Auto-fit text and the configured safe margin keep overlay words inside their columns and stacks above the bottom 15% of the frame.
 
 ## States and Boundaries
 
@@ -130,7 +134,7 @@ Motion-based speaker suggestions were tested and dropped after 2 of 4 assignment
 - AI word generation: the creator supplies the words.
 - Other video formats: this proof is specifically for fixed-shot, three-player Undercover clips.
 - Cloud hosting or deployment: the app runs locally.
-- Full-sentence subtitles, stacking multiple clue words for one player, and wrapping clue words: the rendered output shows one found clue word per player at a time.
+- Full-sentence subtitles and wrapping clue words: the rendered output shows selected clue words, stacking them below each assigned player.
 - A render with only player words and no clue words: at least one assigned clue word is required.
 
 ## Open Questions

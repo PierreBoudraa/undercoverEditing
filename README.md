@@ -33,6 +33,8 @@ $env:FFMPEG_EXE = "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+Rendered videos use a mixed-case `Undercover` title, role-colored glow, and clue words that persist to the end; they use the bundled Chewy font (Apache License 2.0, `assets\fonts\LICENSE.txt`) for consistent rendering without a system font install.
+
 ## Sample processing timings
 
 One local run on a 58-second clip took about 92 seconds overall. These are observations from one machine, not a performance benchmark.
