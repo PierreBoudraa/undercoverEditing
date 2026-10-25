@@ -31,14 +31,14 @@ The regenerated sample report and verification clips were reviewed and approved 
   Learner check: The learner tried the Upload + Words flow and said it was good; no changes were requested.
   Commit: `a04e68a` — `Add local upload and word placement`.
 
-- [ ] **3. Transcribe, align, and review clue suggestions**
+- [x] **3. Transcribe, align, and review clue suggestions**
   Becomes usable: The Transcript step displays each ordered clue's matched transcript token(s), display time, manually assigned player, and match confidence; not-found rows can be fixed before rendering.
   Why now: This wires the validated alignment behavior into the active session and supplies the manual correction path required by the PRD.
   PRD ref: `prd.md > Transcript review and manual player assignment`, `prd.md > States and Boundaries`, `prd.md > The Core Journey`
   Spec ref: `spec.md > Transcription Worker`, `spec.md > Word Alignment and Manual Player Assignment`, `spec.md > Transcript Review Interface`, `spec.md > In-Process Job Tracker and API`, `spec.md > Data Model`
-  Build: Add the local transcription/alignment job and progress reporting. Display found, low-confidence, and not-found entries. Support manual transcript-word selection, ±0.1-second nudges, player changes, clue edits/deletion, individual acceptance, and Accept all. Low-confidence matches remain renderable; only not-found entries block rendering. Preserve typed spelling and assigned player.
-  Verify (mechanical): Run `.\.venv\Scripts\python.exe -m compileall app scripts`; run `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`; run the sample through the UI and confirm the session and review state reflect manual corrections, that low-confidence matches remain renderable, and that not-found entries block rendering.
-  Learner check: Transcribe the sample, inspect matched words and assigned players, correct one match or time, and confirm low-confidence entries do not block rendering while not-found entries do.
+  Build: Added the local faster-whisper worker, in-process job status, and sequential clue alignment. The Transcript step shows timestamped words, match text and confidence, player assignment, and display time. It supports manual transcript-word selection, ±0.1-second nudges, player/clue edits, deletion, individual acceptance, and Accept all. Low-confidence matches remain renderable; only not-found entries block rendering.
+  Verify (mechanical): `compileall`, all 43 unit tests, `node --check app\static\app.js`, and `git diff --check` passed. On the 58-second 1080x1936 sample, the browser transcription produced 188 timestamped words and four aligned rows (three high-confidence, one low-confidence). Browser checks covered player/timing edits and persistence, low-confidence acceptance, the not-found render blocker, and resolving it by selecting a transcript word.
+  Learner check: Deferred to the final end-to-end review after Step 4, per the approved build pacing.
   Commit: `Add transcript alignment and review`.
 
 - [ ] **4. Render and download the matched video**
