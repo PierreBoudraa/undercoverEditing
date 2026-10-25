@@ -264,3 +264,8 @@ The learner provided the ordered sample rows `psychiatrique, Left`, `fou, Center
 - The useful remaining technical uncertainty is whether fuzzy word alignment and the agreed display timing remain usable on the noisy French sample; the report and clips will check this. The earlier Windows transcription/ASS spike already passed on the sample.
 - The learner specified the already-installed Python 3.13.5 only and does not want another Python runtime installed. If a dependency fails, resolve it within 3.13 using a compatible version or alternative. Pin exact package versions that pass the Windows spike; verify a compatible FFmpeg codec/filter build there. No other product-defining decisions remain open.
 - The learner set the 3-second verification window to begin one second before the detected word and end two seconds after. Apply the long-interval anchor rule, then the configured `-0.15` second render offset; the report includes each resulting display time.
+
+## Sharing Instructions
+
+- Public source repository: [Undercover Video Maker on GitHub](https://github.com/PierreBoudraa/undercoverEditing).
+- Demo video: not recorded yet. Add a publicly accessible link here after recording the local app workflow.
